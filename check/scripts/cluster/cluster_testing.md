@@ -38,5 +38,8 @@ Or run a single settings file:
   - `periodic_remove = (JobStatus == 2 && (CurrentTime - JobStartDate) > 14400)` (remove running jobs after 4 hours)
 
 ## 6) Visualization
-The experiment comparison and plotting scripts are on the paper branches.
-Use the instructions on the branch for the corresponding paper.
+After job completion run:
+```
+python3 check/scripts/visu/compare.py
+```
+This reads `check/results/<experiment_name>/` and produces summary tables and performance/profile plots.

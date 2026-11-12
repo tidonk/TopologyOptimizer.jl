@@ -1,0 +1,8 @@
+# Main evaluation, row 5: SP+CF combined.
+# Overrides of settings/default.toml.
+[BENDERS]
+FIX_FORCED_ON_BRANCHES = false
+
+[BENDERS.PARTIAL_DECOMP]
+ENABLED = false
+INCLUDE_BASE_PF = false

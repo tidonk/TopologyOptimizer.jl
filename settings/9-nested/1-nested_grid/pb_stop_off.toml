@@ -1,0 +1,15 @@
+# Experiment 9 — Nested Benders Grid Search — disable primal-bound stop
+APPLICATION                             = "DC_SCOTS_TIME_SLACK_BENDERS_NESTED"
+
+[BENDERS]
+    SUBPROBLEM_SOLVER_TYPE              = "LinEqSysRfSolver"
+
+    [BENDERS.CUTS]
+        [BENDERS.CUTS.SELECTION]
+            ENABLED                     = false
+
+    [BENDERS.PARTIAL]
+        ENABLED                         = false
+
+    [BENDERS.NESTED]
+        PRIMAL_BOUND_STOP               = false

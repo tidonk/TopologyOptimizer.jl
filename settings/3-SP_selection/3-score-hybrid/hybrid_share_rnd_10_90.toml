@@ -1,0 +1,28 @@
+# Experiment 3 / Stage 3 — SCORE hybrid share_rnd (0.1, 0.9)
+# Combines total-share score with a uniformly random component to inject exploration.
+[BENDERS]
+    [BENDERS.PARTIAL]
+        ENABLED                         = true
+        SORTING_MODE                    = ":SCORE"
+        SCORE_DECAY                     = 0.9      # best from Stages 2/3
+        [BENDERS.PARTIAL.LIMITS]
+            STOP_AFTER_TIME             = "Inf"                 # time limit for solving the subproblem (in seconds)
+            STOP_AFTER_N_HITS           = 2                     # number of hits before stopping
+            STOP_AFTER_N_HITS_REL       = "Inf"
+            STOP_AFTER_N_MISSES         = "Inf"                 # number of misses before stopping (after at least one cut was generated)
+            STOP_AFTER_N_FEAS_CUTS      = "Inf"                 # number of feasibility cuts before stopping
+            STOP_ON_PB                  = false                 # stop if the current primal bound is better than the master solution will be after adding these cuts
+            STOP_ON_PB_REL_BUFFER       = 0.1                   # stop if current master solution value * (1 - rel_tol) is worse than primal bound
+            MIN_PRIO                    = 0.0                   # minimum subproblem priority (after at least one cut was generated)
+        [BENDERS.PARTIAL.SCORE]
+            load                        = 0.0
+            sw_score                    = 0.0
+            violation_per_cut           = 0.0
+            reliability                 = 0.0
+            total_share                 = 0.1
+            n_since_call                = 0.01
+            random                      = 0.9
+
+    [BENDERS.CUTS]
+        [BENDERS.CUTS.SELECTION]
+            ENABLED                     = false                  # enable cut selection

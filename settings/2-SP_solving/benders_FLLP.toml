@@ -1,0 +1,10 @@
+[BENDERS]
+    SUBPROBLEM_SOLVER_TYPE              = "FullLPSolver"      # Type of subproblem solver {LPSolver, LinEqSysSolver, FullLPSolver, LinEqSysRfSolver}
+
+    [BENDERS.CUTS]
+        [BENDERS.CUTS.SELECTION]
+            ENABLED                     = false                  # enable cut selection
+
+    # Benders limits for partial subproblem solving
+    [BENDERS.PARTIAL]
+        ENABLED                         = false                  # partial subproblem solving

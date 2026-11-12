@@ -1,0 +1,20 @@
+# Experiment 3 / Stage 2 — SCORE individual (viol=1.0, rel=0.0, share=0.0, decay=0.9)
+[BENDERS]
+    [BENDERS.PARTIAL]
+        ENABLED                         = true
+        SORTING_MODE                    = ":SCORE"
+        SCORE_DECAY                     = 0.9
+        [BENDERS.PARTIAL.LIMITS]
+            STOP_AFTER_N_HITS_REL       = 0.01     # best from Stage 1
+        [BENDERS.PARTIAL.SCORE]
+            load                        = 0.0
+            sw_score                    = 0.0
+            violation_per_cut           = 1.0
+            reliability                 = 0.0
+            total_share                 = 0.0
+            n_since_call                = 0.01
+            random                      = 0.0
+
+    [BENDERS.CUTS]
+        [BENDERS.CUTS.SELECTION]
+            ENABLED                     = false                  # enable cut selection

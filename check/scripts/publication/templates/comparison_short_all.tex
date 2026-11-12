@@ -1,0 +1,20 @@
+\begin{tabular}{@{}rcl>{\raggedright\arraybackslash}p{0.40\linewidth}r@{\hspace{12pt}}rr@{}}
+\toprule
+ & Pred. & Method & Configuration & Solved & Mean (s) & Geo. Mean (s) \\
+\midrule
+1 & - & Compact & All contingencies in master & 110 & 2471.20 & 534.37 \\
+2 & 1 & Benders & LP subproblems & 129 & 921.91 & 403.46 \\
+3 & 2 & Benders SLE-U & SLE-U subproblem solver & 130 & 140.73 & 92.09 \\
+4a & 3 & SP Selection & Random order; $\spmaxn=2$, $\spstab=100$ & 130 & 72.04 & 59.71 \\
+4b & 3 & Cut Filtering & Violation ranking; $\cfmaxn=10$ & 130 & 92.66 & 72.59 \\
+5 & 4 & SP+CF combined & Replace $\spmaxn=2$ by $\spmaxrel=0.05$; $\cfmaxn=5$; no stabilization rounds & 130 & 64.96 & 57.13 \\
+6 & 5 & Partial Decomp. & Base-case flow in master; $\pdmaxn=0$ & 130 & 57.16 & 52.34 \\
+7 & 6 & Branch Fixing & Fix branches required for connectedness to on & 130 & 52.07 & 48.11 \\
+\textcolor{gray}{8a} & \textcolor{gray}{7} & \textcolor{gray}{Heuristic warmstart} & \textcolor{gray}{SCOPF, then RSCOTS with 16 switchable arcs} & \textcolor{gray}{130} & \textcolor{gray}{56.49} & \textcolor{gray}{51.61} \\
+\textcolor{gray}{8b} & \textcolor{gray}{7} & \textcolor{gray}{Parallel heuristic} & \textcolor{gray}{SCOPF--RSCOTS concurrent with SCOTS; two threads per process} & \textcolor{gray}{130} & \textcolor{gray}{54.24} & \textcolor{gray}{50.21} \\
+\textcolor{gray}{9} & \textcolor{gray}{7} & \textcolor{gray}{Multithreading} & \textcolor{gray}{4 Benders subproblem threads} & \textcolor{gray}{130} & \textcolor{gray}{39.05} & \textcolor{gray}{36.86} \\
+\bottomrule
+\end{tabular}
+% n = 130; excluded pglib_scopf_case162; shift = 10 s; non-OPTIMAL/invalid = 10800 s.
+% Multithreading source: 20261022-final-3h-ablation-branchfix-benders-threads/status-audit/summary.json
+% Source: 20261021-final-3h-ablation-heuristics-budget/status-audit/summary-excluding-case162.json

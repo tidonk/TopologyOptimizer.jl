@@ -1,0 +1,8 @@
+[BENDERS]
+
+    [BENDERS.CUTS]
+        FRACTIONAL_SEPA_NODELIM         = 0
+        FRACTIONAL_SEPA_ITERLIM         = 10000                    # TODO determine this
+
+        [BENDERS.CUTS.SELECTION]
+            ENABLED                     = false                  # TODO ?

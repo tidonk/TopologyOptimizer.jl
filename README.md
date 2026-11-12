@@ -66,10 +66,9 @@ evaluation), with switching limit 1 and a solve limit of three hours.
 
 ## Settings and other instances
 
-The configuration is in [settings/default.toml](settings/default.toml).
-To use different settings, copy this file and pass the new path as `params_file`.
-The default values are loaded first, followed by any overrides in that file.
-The numbered experiment settings are on `paper/integrated`.
+The numbered files at the top level of [settings/](settings/README.md) follow the
+accompanying paper's main evaluation table. They contain overrides of
+`settings/default.toml`, which is loaded first.
 
 The two main application identifiers are:
 
@@ -85,7 +84,7 @@ using TopologyOptimizer
 
 result = TopologyOptimizer.main(
     "check/instances/main/pglib_scopf_case85.m";
-    params_file = "settings/default.toml",
+    params_file = "settings/3-benders-sleu.toml",
     busbars = false,
     timesteps = 1,
     slack_types = [:ratea],
@@ -98,8 +97,10 @@ Use `busbars = false` for the paper instances in `check/instances/main/` and
 `check/instances/grid/`, as in the reproduction scripts. The IEEE example in
 `Main.jl` retains the default `busbars = true`. Busbar reconfiguration itself is
 disabled in `settings/default.toml`.
+The parallel heuristic (row 8b) requires the launcher for two processes described in
+[settings/README.md](settings/README.md).
 
-## Instances
+## Experiment data and reproduction
 
 `main` contains the union of 132 cases from the testsets of the accompanying paper
 and the cut filtering paper in `check/instances/main/`. The paper branches retain
@@ -113,6 +114,8 @@ instructions. On `paper/integrated`, `check/scripts/publication/README.md` descr
 the main and practical evaluations. On `paper/cut_selection`, use
 `check/scripts/reproduce_cutfiltering.py`. The `paper/subproblem_solving` README
 covers its local and cluster execution scripts and figure generation.
+
+Experiment results and historical logs are not included.
 
 ## Citation
 

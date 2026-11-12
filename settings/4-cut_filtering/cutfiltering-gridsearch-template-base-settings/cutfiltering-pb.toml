@@ -1,0 +1,18 @@
+# Experiment 4 — Cut Filtering (cut filtering only, no SP selection change)
+# TODO: set NUM_CLUSTERS_REL_ALPHA to best CF alpha from grid search Stage 1
+# TODO: set score weights + decay to best from Exp. 3 (score*)
+[BENDERS]
+    [BENDERS.PARTIAL]
+        ENABLED                         = false     # no SP selection
+
+    [BENDERS.CUTS]
+        [BENDERS.CUTS.SELECTION]
+            ENABLED                     = true                  # enable cut selection
+            METHOD                      = ":VIOLATION"          # cut selection mode {:VIOLATION, :VIOLATION_AGG, :DIVERSITY, :DIVERSITY_AGG, :DIVERSITY_AGG_HYB, :HYBRID, :RANDOM, :RANDOM_AGG}
+            FEASCUT_ONLY                = false                  # add all feasibility cuts and skip optimality cut selection when feasibility cuts exist
+            FEASCUT_INF_VIOL            = true                  # boost feasibility cut violations to Inf so they sort to top during normal selection
+            MIN_OPT_CUTS                = 1                      # minimum number of optimality cuts to include in the selection (0 to disable)
+
+            [BENDERS.CUTS.SELECTION.VIOLATION]
+                LIMIT_MODE              = ":pb"            # limit mode {:abs_num, :rel_num, :rel_num_per_iter, :pb}
+                LIMIT_PB_RHO            = 1.1                   # gap fraction for :pb mode: add cuts until sum(violations) > rho * (z_UB - z_MP)

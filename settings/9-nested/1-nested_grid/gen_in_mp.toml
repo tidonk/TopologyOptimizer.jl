@@ -1,0 +1,15 @@
+# Experiment 9 — Nested Benders Grid Search — generation variables in MP (IP cuts only)
+APPLICATION                             = "DC_SCOTS_TIME_SLACK_BENDERS_NESTED"
+
+[BENDERS]
+    SUBPROBLEM_SOLVER_TYPE              = "LinEqSysRfSolver"
+
+    [BENDERS.CUTS]
+        [BENDERS.CUTS.SELECTION]
+            ENABLED                     = false
+
+    [BENDERS.PARTIAL]
+        ENABLED                         = false
+
+    [BENDERS.NESTED]
+        GENERATION_IN_MP                = true

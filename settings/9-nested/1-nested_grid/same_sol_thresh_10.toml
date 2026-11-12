@@ -1,0 +1,15 @@
+# Experiment 9 — Nested Benders Grid Search — patient same-solution tolerance bump
+APPLICATION                             = "DC_SCOTS_TIME_SLACK_BENDERS_NESTED"
+
+[BENDERS]
+    SUBPROBLEM_SOLVER_TYPE              = "LinEqSysRfSolver"
+
+    [BENDERS.CUTS]
+        [BENDERS.CUTS.SELECTION]
+            ENABLED                     = false
+
+    [BENDERS.PARTIAL]
+        ENABLED                         = false
+
+    [BENDERS.NESTED]
+        SAME_SOL_THRESH                 = 10

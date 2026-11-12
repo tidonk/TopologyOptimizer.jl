@@ -1,0 +1,12 @@
+# Experiment 6 — Sub-experiment B: main TAL = 2, single-stage RSCOTS warmstart at TAL = 2
+[LIMITS]
+    [LIMITS.BRANCH]
+        TAL_TIMESTEP                    = 2
+
+[BENDERS]
+[WARMSTARTING]
+    ENABLED                             = true
+    WARMSTART_METHOD                    = ":rscots"
+
+    [WARMSTARTING.RSCOTS]
+        TAL                             = 2

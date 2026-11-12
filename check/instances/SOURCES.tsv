@@ -65,7 +65,6 @@ main/pglib_scopf_case156.m	pglib_opf_case2383wp_k.m;pglib_opf_case2736sp_k.m;pgl
 main/pglib_scopf_case159.m	pglib_opf_case2000_goc.m;pglib_opf_case500_goc.m
 main/pglib_scopf_case159_2.m	pglib_opf_case1803_snem.m;pglib_opf_case2383wp_k.m
 main/pglib_scopf_case161_1.m	pglib_opf_case89_pegase.m;pglib_opf_case60_c.m;pglib_opf_case57_ieee.m
-main/pglib_scopf_case162.m	pglib_opf_case162_ieee_dtc.m;pglib_opf_case500_goc.m;pglib_opf_case200_activ.m;pglib_opf_case240_pserc.m
 main/pglib_scopf_case164.m	pglib_opf_case60_c.m;pglib_opf_case793_goc.m
 main/pglib_scopf_case166_2.m	pglib_opf_case200_activ.m;pglib_opf_case2848_rte.m;pglib_opf_case179_goc.m;pglib_opf_case240_pserc.m;pglib_opf_case30_as.m
 main/pglib_scopf_case167_2.m	pglib_opf_case2853_sdet.m;pglib_opf_case588_sdet.m;pglib_opf_case73_ieee_rts.m;pglib_opf_case2737sop_k.m;pglib_opf_case2000_goc.m
@@ -81,7 +80,6 @@ main/pglib_scopf_case191_1.m	pglib_opf_case2853_sdet.m;pglib_opf_case300_ieee.m;
 main/pglib_scopf_case191_2.m	pglib_opf_case2312_goc.m;pglib_opf_case39_epri.m;pglib_opf_case300_ieee.m;pglib_opf_case179_goc.m;pglib_opf_case793_goc.m
 main/pglib_scopf_case194_3.m	pglib_opf_case2000_goc.m;pglib_opf_case73_ieee_rts.m;pglib_opf_case2742_goc.m
 main/pglib_scopf_case195_1.m	pglib_opf_case73_ieee_rts.m;pglib_opf_case2869_pegase.m
-main/pglib_scopf_case197_2.m	pglib_opf_case793_goc.m;pglib_opf_case2000_goc.m;pglib_opf_case73_ieee_rts.m
 main/pglib_scopf_case197_3.m	pglib_opf_case500_goc.m;pglib_opf_case89_pegase.m
 main/pglib_scopf_case207.m	pglib_opf_case2383wp_k.m;pglib_opf_case2736sp_k.m;pglib_opf_case2869_pegase.m;pglib_opf_case57_ieee.m;pglib_opf_case2868_rte.m
 main/pglib_scopf_case211.m	pglib_opf_case73_ieee_rts.m;pglib_opf_case89_pegase.m;pglib_opf_case39_epri.m;pglib_opf_case200_activ.m

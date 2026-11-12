@@ -1,0 +1,18 @@
+# Experiment 4 — Cut Filtering only (no SP selection; winner of grid search Stage 1)
+# Source: 6-cutfiltering-abs-spsel-rel/cf10_sp100 (27 OPT / 4 TL, geo 348.7 s; sp100 row, i.e. no SP selection).
+# CF: :VIOLATION cut selection, LIMIT_ABS_NUM = 10
+[BENDERS]
+    [BENDERS.PARTIAL]
+        ENABLED                         = false                 # no SP selection
+
+    [BENDERS.CUTS]
+        [BENDERS.CUTS.SELECTION]
+            ENABLED                     = true                  # enable cut selection
+            METHOD                      = ":VIOLATION"          # cut selection mode {:VIOLATION, :VIOLATION_AGG, :DIVERSITY, :DIVERSITY_AGG, :DIVERSITY_AGG_HYB, :HYBRID, :RANDOM, :RANDOM_AGG}
+            FEASCUT_ONLY                = false                 # add all feasibility cuts and skip optimality cut selection when feasibility cuts exist
+            FEASCUT_INF_VIOL            = true                  # boost feasibility cut violations to Inf so they sort to top during normal selection
+            MIN_OPT_CUTS                = 1                     # minimum number of optimality cuts to include in the selection (0 to disable)
+
+            [BENDERS.CUTS.SELECTION.VIOLATION]
+                LIMIT_MODE              = ":abs_num"            # limit mode {:abs_num, :rel_num, :rel_num_per_iter, :pb}
+                LIMIT_ABS_NUM           = 10                    # absolute number of cuts to be selected

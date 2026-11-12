@@ -1,0 +1,4 @@
+# Main evaluation, row 6: Partial Decomp..
+# Overrides of settings/default.toml.
+[BENDERS]
+FIX_FORCED_ON_BRANCHES = false

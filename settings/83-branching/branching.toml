@@ -1,0 +1,8 @@
+[BRANCHING]
+    BRANCHING_PRIORITY_MODE             = ":SW_HEUR_PRIO"
+    MAX_NUM                             = 10
+    MAX_PCT                             = 0.1
+
+[WARMSTARTING]
+    ENABLED                             = true
+    WARMSTART_METHOD                    = ":scopf"

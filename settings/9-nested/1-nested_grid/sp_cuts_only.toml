@@ -1,0 +1,19 @@
+# Experiment 9 — Nested Benders Grid Search — SP cuts only (no IP cuts to MP)
+# NOTE: at least one of ADD_IP_CUTS / ADD_SP_CUTS must be true (assertion).
+#       ADD_SP_CUTS requires GENERATION_IN_MP = true (assertion).
+APPLICATION                             = "DC_SCOTS_TIME_SLACK_BENDERS_NESTED"
+
+[BENDERS]
+    SUBPROBLEM_SOLVER_TYPE              = "LinEqSysRfSolver"
+
+    [BENDERS.CUTS]
+        [BENDERS.CUTS.SELECTION]
+            ENABLED                     = false
+
+    [BENDERS.PARTIAL]
+        ENABLED                         = false
+
+    [BENDERS.NESTED]
+        GENERATION_IN_MP                = true
+        ADD_IP_CUTS                     = false
+        ADD_SP_CUTS                     = true

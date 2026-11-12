@@ -1,0 +1,34 @@
+# Experiment 9 — Nested Benders Grid Search — BASE settings
+#
+# Common preamble used by every entry in this grid:
+#   * APPLICATION = DC_SCOTS_TIME_SLACK_BENDERS_NESTED   (from nested_base.toml)
+#   * Stage-2 simple LEQRF subproblem solver
+#   * All stage-3+ features (cut selection, partial SP solving, partial decomp,
+#     in/out, fractional sepa, branching heur) left at their default values so
+#     they do not influence the nested-Benders measurement.
+#
+# This file holds the NESTED defaults from default.toml.  Variants override
+# exactly one nested parameter at a time (one-factor-at-a-time grid).
+
+APPLICATION                             = "DC_SCOTS_TIME_SLACK_BENDERS_NESTED"
+
+[BENDERS]
+    SUBPROBLEM_SOLVER_TYPE              = "LinEqSysRfSolver"
+
+    [BENDERS.CUTS]
+        [BENDERS.CUTS.SELECTION]
+            ENABLED                     = false
+
+    [BENDERS.PARTIAL]
+        ENABLED                         = false
+
+    [BENDERS.NESTED]
+        MP_PRIMAL_HEURISTICS            = true
+        BASE_PF_IN_INTERMEDIATE         = false
+        NO_CHANGE_STOP                  = false
+        PRIMAL_BOUND_STOP               = true
+        CUT_POOL_SIZE                   = 2000
+        SAME_SOL_THRESH                 = 3
+        GENERATION_IN_MP                = false
+        ADD_IP_CUTS                     = true
+        ADD_SP_CUTS                     = false

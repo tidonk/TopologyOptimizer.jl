@@ -1,0 +1,16 @@
+# Experiment 3 / Stage 4 — SCORE decay (decay=0.1)
+# TODO: set score weights to best combination from Stage 3 (score*)
+[BENDERS]
+    [BENDERS.PARTIAL]
+        ENABLED                         = true
+        SORTING_MODE                    = ":SCORE"
+        SCORE_DECAY                     = 0.1
+        [BENDERS.PARTIAL.LIMITS]
+            STOP_AFTER_N_HITS_REL       = 0.10     # best from Stage 1
+        [BENDERS.PARTIAL.SCORE]
+            load                        = 0.0
+            sw_score                    = 0.0
+            violation_per_cut           = 0.0      # TODO: best from Stage 3
+            reliability                 = 1.0      # TODO: best from Stage 3
+            total_share                 = 0.0      # TODO: best from Stage 3
+            n_since_call                = 0.01

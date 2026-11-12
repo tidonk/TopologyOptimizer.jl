@@ -1,0 +1,4 @@
+# Main evaluation, row 9: Multithreading.
+# Overrides of settings/default.toml.
+[SOLVER.MULTITHREADING]
+N_THREADS_BENDERS = 4

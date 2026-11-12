@@ -1,0 +1,61 @@
+# Experiment 4 — Cut Filtering (cut filtering only, no SP selection change)
+# TODO: set NUM_CLUSTERS_REL_ALPHA to best CF alpha from grid search Stage 1
+# TODO: set score weights + decay to best from Exp. 3 (score*)
+[WARMSTARTING]
+    ENABLED                             = true                 # warmstart the problem with a solution generated using WARMSTART_METHOD
+    WARMSTART_METHOD                    = ":scopf"            # warmstart mode {:opf, :ots, :scopf, :rscots, :rscots2}
+
+[BENDERS]
+    [BENDERS.PARTIAL_DECOMP]
+        ENABLED                         = true                 # universal gate for keeping any power flow in the master problem; if false, master is pure no-PF Benders
+        INCLUDE_BASE_PF                 = false                 # include the base-case power flow in master (replaces former BENDERS.BASE_PF_IN_MASTER; not supported in nested Benders)
+        MODE                            = ":SW_HEUR"           # mode to select contingencies to be left in the master problem {:SW_HEUR, :DIVERSITY, :RND, :OVERLOAD}; setting N_MAX_CONTINGENCIES = 0 and N_MAX_CONTINGENCIES_PCT = 0 keeps no contingency PFs in master
+        DISTANCE_METRIC                 = ":euclidean"           # distance metric for diversity calculation {:jaccard, :hamming, :cosine, :euclidean, :eqfreq_bin}
+        N_MAX_CONTINGENCIES             = 0                     # absolute cap on contingencies left in the master problem (used unless N_MAX_CONTINGENCIES_PCT > 0); 0 disables contingency PFs in master
+        N_MAX_CONTINGENCIES_PCT         = 0.0                   # if > 0, cap is ceil(PCT * n_relevant); overrides N_MAX_CONTINGENCIES; 0.0 disables
+        MIN_VIOLATION                   = 0                     # minimum violation (in cost units) of a contingency to be considered for inclusion in the master problem
+
+    [BENDERS.PARTIAL]
+        ENABLED                         = true
+        SORTING_MODE                    = ":SCORE"
+        SCORE_DECAY                     = 0.9
+        ETA_ROBUSTNESS                  = 10.0                  # robustness parameter for cuts
+        ETA_ROBUSTNESS_FEAS             = 1.0                   # robustness parameter for feasibility cuts
+        STAB_ROUND_FREQ                 = "Inf"                 # frequency of stabilization rounds (all subproblems are solved, -1 for no stabilization)
+
+        [BENDERS.PARTIAL.LIMITS]
+            STOP_AFTER_TIME             = "Inf"                 # time limit for solving the subproblem (in seconds)
+            STOP_AFTER_N_HITS           = "Inf"                 # number of hits before stopping
+            STOP_AFTER_N_HITS_REL       = 0.01
+            STOP_AFTER_N_MISSES         = "Inf"                 # number of misses before stopping (after at least one cut was generated)
+            STOP_AFTER_N_FEAS_CUTS      = "Inf"                 # number of feasibility cuts before stopping
+            STOP_ON_PB                  = false                 # stop if the current primal bound is better than the master solution will be after adding these cuts
+            STOP_ON_PB_REL_BUFFER       = 0.1                   # stop if current master solution value * (1 - rel_tol) is worse than primal bound
+            MIN_PRIO                    = 0.0                   # minimum subproblem priority (after at least one cut was generated)
+            
+        [BENDERS.PARTIAL.SCORE]
+            load                        = 0.0                  # weight for line loading in base case (obtained before entering each callback)
+            sw_score                    = 0.0                   # weight for branch switching relevance score (if warmstarting is enabled)
+            violation_per_cut           = 0.0                   # weight for the average violation per call (even if no cut was generated)
+            reliability                 = 0.0                   # weight for reliability score (n_cuts_used / n_calls)
+            total_share                 = 0.0                   # weight for share of cuts found by this subproblem in the total number of cuts found 
+            n_since_call                = 0.01                  # weight for number of calls since last call (i.e., each iteration where this subproblem was not called increases score by this weight)
+            random                      = 0.01                   # weight for a uniformly random component in [0,1] (re-sampled each round) to inject exploration
+            diversity                   = 1.0                   # weight for sensitivity based clustering, SPs from each cluster are randomly selected from that cluster in order
+
+        [BENDERS.PARTIAL.SCORE_DIV]
+            N_MEDOIDS               = 5                    # number of clusters
+            MEDOIDS_FIRST           = true                 # select the medoid of each cluster first
+            DISTANCE_METRIC         = ":cosine"            # distance metric {:jaccard, :hamming, :cosine, :euclidean, :eqfreq_bin}
+
+    [BENDERS.CUTS]
+        [BENDERS.CUTS.SELECTION]
+            ENABLED                     = true                  # enable cut selection
+            METHOD                      = ":VIOLATION"          # cut selection mode {:VIOLATION, :VIOLATION_AGG, :DIVERSITY, :DIVERSITY_AGG, :DIVERSITY_AGG_HYB, :HYBRID, :RANDOM, :RANDOM_AGG}
+            FEASCUT_ONLY                = false                  # add all feasibility cuts and skip optimality cut selection when feasibility cuts exist
+            FEASCUT_INF_VIOL            = true                  # boost feasibility cut violations to Inf so they sort to top during normal selection
+            MIN_OPT_CUTS                = 1                      # minimum number of optimality cuts to include in the selection (0 to disable)
+
+            [BENDERS.CUTS.SELECTION.VIOLATION]
+                LIMIT_MODE              = ":rel_num"            # limit mode {:abs_num, :rel_num, :rel_num_per_iter, :pb}
+                LIMIT_REL_ALPHA         = 0.01                   # fraction of total subproblems to select (for :rel_num mode): ceil(alpha * n_subproblems)

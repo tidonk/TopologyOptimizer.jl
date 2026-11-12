@@ -1,0 +1,24 @@
+# Experiment 4 — Cut Filtering (cut filtering only, no SP selection change)
+# TODO: set NUM_CLUSTERS_REL_ALPHA to best CF alpha from grid search Stage 1
+# TODO: set score weights + decay to best from Exp. 3 (score*)
+[BENDERS]
+    [BENDERS.PARTIAL]
+        ENABLED                         = false     # no SP selection
+
+    [BENDERS.CUTS]
+        [BENDERS.CUTS.SELECTION]
+            ENABLED                     = true
+            METHOD                      = ":DIVERSITY_AGG_HYB"
+            FEASCUT_ONLY                = false                  # add all feasibility cuts and skip optimality cut selection when feasibility cuts exist
+            FEASCUT_INF_VIOL            = true                  # boost feasibility cut violations to Inf so they sort to top during normal selection
+            MIN_OPT_CUTS                = 1                      # minimum number of optimality cuts to include in the selection (0 to disable)
+
+            [BENDERS.CUTS.SELECTION.DIVERSITY_AGG_HYB]
+                USE_DBSCAN                  = false                # use DBSCAN instead of KMeans for clustering
+                DISTANCE_METRIC             = ":cosine"            # distance metric {:jaccard, :hamming, :cosine, :euclidean, :eqfreq_bin}
+                NUM_CLUSTERS_MODE           = ":rel"
+                NUM_CLUSTERS_REL_ALPHA      = 0.01
+                AGG_HYB_MODE                = ":k_plus_1"
+                REPRESENTATIVE_MODE         = ":max_violation"
+                WEIGHTED_AGG                = true
+                WEIGHTED_AGG_NORMALIZE      = true

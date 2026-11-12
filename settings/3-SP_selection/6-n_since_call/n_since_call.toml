@@ -1,0 +1,20 @@
+# Experiment 6 — SCORE n_since_call only (weight = 1.0, no decay), STOP_AFTER_N_HITS = 2
+[BENDERS]
+    [BENDERS.PARTIAL]
+        ENABLED                         = true
+        SORTING_MODE                    = ":SCORE"
+        SCORE_DECAY                     = 1.0
+        [BENDERS.PARTIAL.LIMITS]
+            STOP_AFTER_N_HITS           = 2        # Stage-3 winner (rnd_abs_2)
+        [BENDERS.PARTIAL.SCORE]
+            load                        = 0.0
+            sw_score                    = 0.0
+            violation_per_cut           = 0.0
+            reliability                 = 0.0
+            total_share                 = 0.0
+            n_since_call                = 1.0
+            random                      = 0.0
+
+    [BENDERS.CUTS]
+        [BENDERS.CUTS.SELECTION]
+            ENABLED                     = false                  # enable cut selection

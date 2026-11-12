@@ -1,0 +1,3 @@
+[LIMITS]
+    [LIMITS.BRANCH]
+        TAL_TIMESTEP                    = 0                    # TAL per timestep (e.g., 1 hour)

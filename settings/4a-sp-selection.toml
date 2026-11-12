@@ -1,0 +1,20 @@
+# Main evaluation, row 4a: SP Selection.
+# Overrides of settings/default.toml.
+[BENDERS]
+FIX_FORCED_ON_BRANCHES = false
+
+[BENDERS.PARTIAL_DECOMP]
+ENABLED = false
+INCLUDE_BASE_PF = false
+
+[BENDERS.CUTS.SELECTION]
+ENABLED = false
+FEASCUT_INF_VIOL = false
+MIN_OPT_CUTS = 0
+
+[BENDERS.PARTIAL]
+STAB_ROUND_FREQ = 100
+
+[BENDERS.PARTIAL.LIMITS]
+STOP_AFTER_N_HITS = 2
+STOP_AFTER_N_HITS_REL = "Inf"

@@ -1,0 +1,7 @@
+# Overrides of settings/default.toml. Original settings are identified in ../origins.tsv.
+[SOLVER]
+SOLVING_TIME_LIMIT = 21600
+
+[WARMSTARTING]
+ENABLED = true
+WARMSTART_METHOD = ":scopf"
