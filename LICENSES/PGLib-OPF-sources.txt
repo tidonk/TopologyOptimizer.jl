@@ -1,0 +1,1337 @@
+PGLib-OPF source attribution
+============================
+
+The bundled instances are modified data derived from PGLib-OPF, maintained by
+the IEEE PES Task Force on Benchmarks for Validation of Emerging Power System
+Algorithms: https://github.com/power-grid-lib/pglib-opf
+
+check/instances/SOURCES.tsv maps each bundled instance to the source cases below.
+The bundled data are distributed under Creative Commons Attribution 4.0
+International: https://creativecommons.org/licenses/by/4.0/
+The library's license notice is retained in PGLib-OPF.txt in this directory.
+
+The original attribution headers are reproduced below. The source URLs identify
+the upstream files used to obtain these headers, including their references,
+copyright and license notices, and descriptions of earlier modifications.
+Full upstream data and transformation notes are available at those URLs.
+
+pglib_opf_case118_ieee.m
+========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case118_ieee.m
+SHA-256: 89ed6d685ddfb0d982ca54ccf31f41c9b52bd8b0275b92fe71f56a6690fd1244
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   Power flow data for IEEE 118 bus test case.
+%   Please see CASEFORMAT for details on the case file format.
+%   (ieee118cdf.txt) on 20-Sep-2004 by cdf2matp, rev. 1.11
+%
+%   Converted from IEEE CDF file from:
+%       http://www.ee.washington.edu/research/pstca/
+%
+%   With base_kV data take from the PSAP format file from the same site,
+%   added manually on 10-Mar-2006.
+%
+%   Copyright (c) 1999 by Richard D. Christie, University of Washington
+%   Electrical Engineering Licensed under the Creative Commons Attribution 4.0
+%   International license, http://creativecommons.org/licenses/by/4.0/
+%
+%   CDF Header:
+%   08/25/93 UW ARCHIVE           100.0  1961 W IEEE 118 Bus Test Case
+%
+
+pglib_opf_case1354_pegase.m
+===========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case1354_pegase.m
+SHA-256: 1ad7788796b7635aa204e0b88916554b96a74049e0ac48ca0f53364af284165d
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%CASE1354PEGASE  Power flow data for medium part of European system.
+%   Please see CASEFORMAT for details on the case file format.
+%
+%   This case accurately represents the size and complexity of part of the
+%   European high voltage transmission network. The network contains 1,354
+%   buses, 260 generators, and 1,991 branches and it operates at 380 and
+%   220 kV. Please note that the data are fictitious and do not correspond
+%   to real world data. They can thus be used to validate methods and tools
+%   but should not be used for operation and planning of the European grid.
+%
+%   The data stems from the Pan European Grid Advanced Simulation and State
+%   Estimation (PEGASE) project, part of the 7th Framework Program of the
+%   European Union (http://www.fp7-pegase.com/). When publishing results
+%   based on this data, please cite:
+%
+%     S. Fliscounakis, P. Panciatici, F. Capitanescu, and L. Wehenkel,
+%     "Contingency ranking with respect to overloads in very large power
+%     systems taking into account uncertainty, preventive and corrective
+%     actions", Power Systems, IEEE Trans. on, (28)4:4909-4917, 2013.
+%     http://dx.doi.org/10.1109/TPWRS.2013.2251015
+%
+%   Remarks:
+%
+%   1. Line flow limits are 100 MVA (at 1 p.u. voltage) lower than the
+%   current flow limits found in PEGASE data.
+%
+%   2. PEGASE data contains asymmetric shunt conductance and susceptance in
+%   the PI transmission line model of branches. Thus total line charging
+%   susceptance of branches is set to 0 p.u. and the nodal representation
+%   of shunt condutance and susceptance is used. As a result, power flow
+%   equations are left unchanged compared with original PEGASE data.
+%   However, line flow constraints in the optimal flow problem are
+%   modified.
+%
+%   3. Identical linear costs are used for all generators to form a loss
+%   minimizing OPF objective function.
+%
+%   4. Since some parts of the network are aggregated, some generators
+%   (e.g. with negative PMIN) represent aggregations of multiple loads
+%   and generators.
+%
+%   Cédric Josz, Stéphane Fliscounakis, Jean Maeght, Patrick Panciatici
+%   firstname.lastname@rte-france.com
+%   Réseau de Transport d'Electricité (French Transmission System Operator)
+%   Département Expertise Système, Immeuble "Le Colbert"
+%   9 rue de la Porte de Buc, 78000 Versailles Cedex, France
+%   March 18th, 2015
+%
+%   Copyright (c) 2015 by Cédric Josz, Stéphane Fliscounakis, Jean Maeght,
+%   and Patrick Panciatici
+%   Licensed under the Creative Commons Attribution 4.0 International license,
+%   http://creativecommons.org/licenses/by/4.0/
+%
+
+pglib_opf_case14_ieee.m
+=======================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case14_ieee.m
+SHA-256: 61d40b45b06d6e6872aeb0525404bc94ba52b0fdcc7ba33613502d9b0d461a51
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   Power flow data for IEEE 14 bus test case.
+%   This data was converted from IEEE Common Data Format
+%   (ieee14cdf.txt) on 20-Sep-2004 by cdf2matp, rev. 1.11
+%
+%   Converted from IEEE CDF file from:
+%        http://www.ee.washington.edu/research/pstca/
+%
+%   Copyright (c) 1999 by Richard D. Christie, University of Washington
+%   Electrical Engineering Licensed under the Creative Commons Attribution 4.0
+%   International license, http://creativecommons.org/licenses/by/4.0/
+%
+%   CDF Header:
+%   08/19/93 UW ARCHIVE           100.0  1962 W IEEE 14 Bus Test Case
+%
+
+pglib_opf_case162_ieee_dtc.m
+============================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case162_ieee_dtc.m
+SHA-256: aeffa2af3c3b794a5ec71d788fa54bcb49b6159bd1072fd84a7026069ee9cd87
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   Power flow data for IEEE 17-Generator Dynamic Test Case.
+%   This data was converted from IEEE Common Data Format
+%   (dd17cdf.txt) on 11-Jul-2014 by cdf2matp, rev. 2327
+%   See end of file for warnings generated during conversion.
+%
+%   Converted from IEEE CDF file from:
+%       http://www.ee.washington.edu/research/pstca/
+%
+%   Copyright (c) 1999 by Richard D. Christie, University of Washington
+%   Electrical Engineering Licensed under the Creative Commons Attribution 4.0
+%   International license, http://creativecommons.org/licenses/by/4.0/
+%
+%   CDF Header:
+%   01/02/90 IEEE WORKING GROUP    100.0 1990 S 17-GEN  CASE
+%
+
+pglib_opf_case179_goc.m
+=======================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case179_goc.m
+SHA-256: afa78205a9509174cb32d31bba991af2b85b19f07f1931a7782fb200bab59391
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   A 179 bus model created for the APRA-e Grid Optimization Competition.
+%   The model is loosely based on the Western Systems Coordinating Council
+%   (WECC/WSCC) network and is discussed in the following report,
+%
+%   Electric Power Research Institute
+%   "DC multi-infeed study. Final report"
+%   EPRI-TR-104586, December 1994.
+%
+%   The original model is available at,
+%   https://gocompetition.energy.gov/competition/beta?page=data
+%   Accessed, July 2018
+%
+%   Provided in the public domain. January, 2018
+%
+
+pglib_opf_case1803_snem.m
+=========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/dc6be4b2f85ca0e776952ec22cbd4c22396ea5a3/pglib_opf_case1803_snem.m
+SHA-256: 10bc2bbb3d0634642a2ebb998bf4aed3b11e23b6a1ad131935a8f997c18d5eac
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v23.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         23 - July - 2023                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   Optimal Power Flow data for the Synthetic National Electricity Market (SNEM)
+%   Australia - Mainland subnetwork.
+%
+%   This dataset is derived by complementing and extending the S-NEM2300bus
+%   benchmark data and software as part the following works:
+%      - F. Arraño-Vargas and G. Konstantinou, "Modular Design and Real-Time
+%        Simulators Toward Power System Digital Twins Implementation," in IEEE
+%        Transactions on Industrial Informatics, doi: 10.1109/TII.2022.3178713
+%      - F. Arraño-Vargas and G. Konstantinou, "Synthetic Grid Modeling for
+%        Real-Time Simulations," 2021 IEEE PES Innovative Smart Grid
+%        Technologies - Asia (ISGT Asia), 2021,
+%        doi: 10.1109/ISGTAsia49270.2021.9715654
+%
+%   A technical report about this dataset is available at:
+%   https://arxiv.org/abs/2306.08176
+%
+%   Copyright (c) 2023 by Rahmat Heidari (rahmat.heidarihaei@csiro.au)
+%   Licensed under the Creative Commons Attribution 4.0
+%   International license, http://creativecommons.org/licenses/by/4.0/
+%
+
+pglib_opf_case1888_rte.m
+========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case1888_rte.m
+SHA-256: e7241e0ff734850257380cf53612841159442d341b85d9e37f5f2b7715f3e499
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%CASE1888RTE
+%   AC Power flow data for French system.
+%   Please see CASEFORMAT for details on the case file format.
+%
+%   This case accurately represents the size and complexity of French
+%   very high voltage transmission network.
+%   Part of this data was sampled in the offline platform of iTesla.
+%   These data can be used to validate mathematical methods and tools.
+%   These data should NOT be used for operation
+%   nor planning of the French or European grids.
+%
+%   When publishing results using this data, please cite:
+%     C. Josz, S. Fliscounakis, J. Maeght, and P. Panciatici,
+%     "AC Power Flow Data in MATPOWER and QCQP Format: iTesla, RTE Snapshots, and PEGASE"
+%     http://arxiv.org/abs/1603.01533
+%
+%   Contacts (primary contact for this file : Jean Maeght):
+%   Cédric Josz, Stéphane Fliscounakis, Jean Maeght, Patrick Panciatici
+%   firstname.lastname@rte-france.com
+%   Réseau de Transport d'Electricité (French Transmission System Operator)
+%   Département Expertise Système, Immeuble "Le Colbert"
+%   9 rue de la Porte de Buc, 78000 Versailles Cedex, France
+%   March 4th, 2016
+%
+%   Copyright (c) 2016 by Cédric Josz, Stéphane Fliscounakis, Jean Maeght,
+%   and Patrick Panciatici
+%   Licensed under the Creative Commons Attribution 4.0 International license,
+%   http://creativecommons.org/licenses/by/4.0/
+%
+
+pglib_opf_case1951_rte.m
+========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case1951_rte.m
+SHA-256: 664eacb1bf4e2526bc21aa1182cce141723d8b65b2840b76aa21bb0fd3ff3a53
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%CASE1951RTE
+%   AC Power flow data for French system.
+%   Please see CASEFORMAT for details on the case file format.
+%
+%   This case accurately represents the size and complexity of French
+%   very high voltage transmission network.
+%   Part of this data was sampled in the offline platform of iTesla.
+%   These data can be used to validate mathematical methods and tools.
+%   These data should NOT be used for operation
+%   nor planning of the French or European grids.
+%
+%   When publishing results using this data, please cite:
+%     C. Josz, S. Fliscounakis, J. Maeght, and P. Panciatici,
+%     "AC Power Flow Data in MATPOWER and QCQP Format: iTesla, RTE Snapshots, and PEGASE"
+%     http://arxiv.org/abs/1603.01533
+%
+%   Contacts (primary contact for this file : Jean Maeght):
+%   Cédric Josz, Stéphane Fliscounakis, Jean Maeght, Patrick Panciatici
+%   firstname.lastname@rte-france.com
+%   Réseau de Transport d'Electricité (French Transmission System Operator)
+%   Département Expertise Système, Immeuble "Le Colbert"
+%   9 rue de la Porte de Buc, 78000 Versailles Cedex, France
+%   March 4th, 2016
+%
+%   Copyright (c) 2016 by Cédric Josz, Stéphane Fliscounakis, Jean Maeght,
+%   and Patrick Panciatici
+%   Licensed under the Creative Commons Attribution 4.0 International license,
+%   http://creativecommons.org/licenses/by/4.0/
+%
+
+pglib_opf_case197_snem.m
+========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/dc6be4b2f85ca0e776952ec22cbd4c22396ea5a3/pglib_opf_case197_snem.m
+SHA-256: 599c83008f4736553b973060d030f1f1b3f40bcc093497a1639a2c84e6a5bfee
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v23.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         23 - July - 2023                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   Optimal Power Flow data for the Synthetic National Electricity Market (SNEM)
+%   Australia - Tasmania subnetwork.
+%
+%   This dataset is derived by complementing and extending the S-NEM2300bus
+%   benchmark data and software as part the following works:
+%      - F. Arraño-Vargas and G. Konstantinou, "Modular Design and Real-Time
+%        Simulators Toward Power System Digital Twins Implementation," in IEEE
+%        Transactions on Industrial Informatics, doi: 10.1109/TII.2022.3178713
+%      - F. Arraño-Vargas and G. Konstantinou, "Synthetic Grid Modeling for
+%        Real-Time Simulations," 2021 IEEE PES Innovative Smart Grid
+%        Technologies - Asia (ISGT Asia), 2021,
+%        doi: 10.1109/ISGTAsia49270.2021.9715654
+%
+%   A technical report about this dataset is available at:
+%   https://arxiv.org/abs/2306.08176
+%
+%   Copyright (c) 2023 by Rahmat Heidari (rahmat.heidarihaei@csiro.au)
+%   Licensed under the Creative Commons Attribution 4.0
+%   International license, http://creativecommons.org/licenses/by/4.0/
+%
+
+pglib_opf_case2000_goc.m
+========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case2000_goc.m
+SHA-256: ffaf2221d371f9ed83f6a39968d686c0f9029228ca707f7b4420a8cfeb6f8520
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   This is a synthetic 2,000 bus case, developed for use in ARPA-e's Grid
+%   Optimization Competition, Challenge 1.
+%
+%   https://gocompetition.energy.gov/challenges/22/datasets
+%
+%   When publishing results based on this data, please cite:
+%
+%   [1] A.B. Birchfield, T. Xu, K.M. Gegner, K.S. Shetye, T.J. Overbye,
+%       "Grid Structural Characteristics as Validation Criteria for
+%       Synthetic Networks," IEEE Transactions on Power Systems, 2017.
+%
+%   February, 2020
+%
+%   Copyright (c) 2020 by A.B. Birchfield, H. Li, J. Wert, J. Yeo, T. Xu,
+%   and T.J. Overbye
+%   Licensed under the Creative Commons Attribution 4.0 International license,
+%   http://creativecommons.org/licenses/by/4.0/
+%
+
+pglib_opf_case200_activ.m
+=========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case200_activ.m
+SHA-256: 05bafc35f70232b855ea6f22cf6deb40c4c9e53ab1da05430a7ae6835ee9d68e
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   This is an entirely synthetic 200 bus case, geographically situated
+%   in the central part of the US state of Illinois. The case is
+%   designed with a 230 and 115 kV transmission network to serve
+%   a load that roughly mimics the actual population of its geographic
+%   footprint. The synthetic transmission system was designed by
+%   algorithms described in [1] to be statistically similar to actual
+%   transmission system models but without modeling any actual lines.
+%
+%   When publishing results based on this data, please cite:
+%
+%   [1] A.B. Birchfield, T. Xu, K.M. Gegner, K.S. Shetye, T.J. Overbye,
+%       "Grid Structural Characteristics as Validation Criteria for
+%       Synthetic Networks," IEEE Transactions on Power Systems, 2017.
+%
+%   This is a synthetic power system model that does not represent the
+%   actual grid. It was developed as part of the US ARPA-E GRID DATA
+%   research project and contains no CEII.
+%
+%   One-line diagrams and other data formats available at:
+%       https://electricgrids.engr.tamu.edu
+%
+%   May 16, 2017
+%
+%   Created from ACTIV_SG_200.pwb, saved by
+%   PowerWorld Simulator, version 20 Beta, build date May 19, 2017,
+%   then by MATPOWER 6.
+%
+%   Copyright (c) 2017 by A.B. Birchfield, T. Xu, K.M. Gegner, K.S. Shetye,
+%   and T.J. Overbye
+%   Licensed under the Creative Commons Attribution 4.0 International license,
+%   http://creativecommons.org/licenses/by/4.0/
+%
+
+pglib_opf_case2312_goc.m
+========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case2312_goc.m
+SHA-256: 0b1bb725f4db59d054b4464d63b65150a3172060b82f9dc7e1ff6f36262a0ec3
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   A 2,312 bus model created by the Sustainable Data Evolution Technology (SDET)
+%   tool for use in ARPA-e's Grid Optimization Competition, Challenge 1.
+%
+%   https://gocompetition.energy.gov/challenges/22/datasets
+%
+%   Developed by Renke Huang and Ahmad Tbaileh,
+%   Pacific Northwest National Laboratory, U.S.A.
+%   Provided in the public domain. February, 2020
+%
+
+pglib_opf_case2383wp_k.m
+========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case2383wp_k.m
+SHA-256: 62971be20ae1074be441a24fafb2635f6fb88871710649d0dc894c7b8b08f498
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   Power flow data for Polish system - winter 1999-2000 peak.
+%
+%   This case represents the Polish 400, 220 and 110 kV networks during
+%   winter 1999-2000 peak conditions. It is part of the 7500+ bus
+%   Europen UCTE system. To decrease the number of buses, the tie lines
+%   to foreign networks were replaced by artificial load or generator
+%   buses (180-186). Multiple generators at a bus have been aggregated.
+%   Generators that are not centrally dispatchable in the Polish energy
+%   market are given a cost of zero.
+%
+%   Copyright (c) 2010 by Roman Korab <roman.korab@polsl.pl>
+%   Licensed under the Creative Commons Attribution 4.0
+%   International license, http://creativecommons.org/licenses/by/4.0/
+%
+
+pglib_opf_case240_pserc.m
+=========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case240_pserc.m
+SHA-256: 86644cde6d88a42cc718c12ec56f8597f82e72532e7526e6e88dafd51cb2f59e
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   This case was prepared as part of PSERC M-21, "Technical and Economic
+%   Implications of Greenhouse Gas Regulation in a Transmission Constrained
+%   Restructured Electricity Market", which is available at https://pserc.wisc.edu
+%   This dataset only includes the network model, the original report has a
+%   variety of additional data, which are discussed in the following technical
+%   report,
+%
+%   Price, J. & Goodin, J.
+%   "Reduced Network Modeling of WECC as a Market Design Prototype"
+%   Power and Energy Society General Meeting
+%   Detroit, MI, July, 2011
+%
+%   Copyright (c) 2011, Power Systems Engineering Research Center (PSERC)
+%   Licensed under the Creative Commons Attribution 4.0 International license,
+%   http://creativecommons.org/licenses/by/4.0/
+%
+
+pglib_opf_case24_ieee_rts.m
+===========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case24_ieee_rts.m
+SHA-256: 9c1a4b9e09e976bcce2629111b4871aeec3da46a589ae4873a322116c1ef1bd2
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   Power flow data for the IEEE RELIABILITY TEST SYSTEM 1979.
+%
+%   IEEE Reliability Test System Task Force of the Applications of
+%   Probability Methods Subcommittee, "IEEE reliability test system,"
+%   IEEE Transactions on Power Apparatus and Systems, Vol. 98, No. 6,
+%   Nov./Dec. 1979, pp. 2047-2054.
+%
+%   Cost data is from Web site run by Georgia Tech Power Systems Control
+%   and Automation Laboratory:
+%       http://pscal.ece.gatech.edu/testsys/index.html
+%
+%   Matpower case file data provided by Bruce Wollenberg.
+%
+%   Copyright (c) 1979 The Institute of Electrical and Electronics Engineers (IEEE)
+%   Licensed under the Creative Commons Attribution 4.0
+%   International license, http://creativecommons.org/licenses/by/4.0/
+%
+%   Contact M.E. Brennan (me.brennan@ieee.org) for inquries on further reuse of
+%   this dataset.
+%
+
+pglib_opf_case2736sp_k.m
+========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case2736sp_k.m
+SHA-256: bf2653d57367dabdd459bfac80b4c39001e5448fdf942ea616894be5fa9e5151
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   Power flow data for Polish system - summer 2004 peak.
+%
+%   This case represents the Polish 400, 220 and 110 kV networks during
+%   summer 2004 peak conditions. Multiple centrally dispatchable
+%   generators at a bus have not been aggregated. Generators that are
+%   not centrally dispatchable in the Polish energy market are given a
+%   cost of zero.
+%
+%   Copyright (c) 2010 by Roman Korab <roman.korab@polsl.pl>
+%   Licensed under the Creative Commons Attribution 4.0
+%   International license, http://creativecommons.org/licenses/by/4.0/
+%
+
+pglib_opf_case2737sop_k.m
+=========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case2737sop_k.m
+SHA-256: 5957d519e6c5e07151bea234ae977f3a0d235aa08c92fa650a3154cdfa240c25
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   Power flow data for Polish system - summer 2004 off-peak.
+%   Please see CASEFORMAT for details on the case file format.
+%
+%   This case represents the Polish 400, 220 and 110 kV networks during
+%   summer 2004 off-peak conditions. Multiple centrally dispatchable
+%   generators at a bus have not been aggregated. Generators that are
+%   not centrally dispatchable in the Polish energy market are given a
+%   cost of zero.
+%
+%   Copyright (c) 2010 by Roman Korab <roman.korab@polsl.pl>
+%   Licensed under the Creative Commons Attribution 4.0
+%   International license, http://creativecommons.org/licenses/by/4.0/
+%
+
+pglib_opf_case2742_goc.m
+========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case2742_goc.m
+SHA-256: 9975ca628a27d4cfd92f78fbfe62bfafbb60cabe1403c14cdd93a989d87055aa
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   This is a synthetic 2,742 bus case, developed for use in ARPA-e's Grid
+%   Optimization Competition, Challenge 1.
+%
+%   https://gocompetition.energy.gov/challenges/22/datasets
+%
+%   Copyright (c) 2020 University of Wisconsin-Madison
+%   https://dev.epigrids.discovery.wisc.edu/
+%   Licensed under the Creative Commons Attribution 4.0 International license,
+%   http://creativecommons.org/licenses/by/4.0/
+%
+
+pglib_opf_case2746wop_k.m
+=========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case2746wop_k.m
+SHA-256: 35fd8c84485566f4000196e173a90e049efaf991b70d38d04d8830e301937380
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   Power flow data for Polish system - winter 2003-04 off-peak.
+%   Please see CASEFORMAT for details on the case file format.
+%
+%   This case represents the Polish 400, 220 and 110 kV networks during
+%   winter 2003-04 off-peak conditions. Multiple centrally dispatchable
+%   generators at a bus have not been aggregated. Generators that are
+%   not centrally dispatchable in the Polish energy market are given a
+%   cost of zero.
+%
+%   Copyright (c) 2010 by Roman Korab <roman.korab@polsl.pl>
+%   Licensed under the Creative Commons Attribution 4.0
+%   International license, http://creativecommons.org/licenses/by/4.0/
+%
+
+pglib_opf_case2746wp_k.m
+========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case2746wp_k.m
+SHA-256: 1ef19f654c7a22950da3eecea272e8d55a1e579b0f4c10cd1ad165f79f14c8e9
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   Power flow data for Polish system - winter 2003-04 evening peak.
+%   Please see CASEFORMAT for details on the case file format.
+%
+%   This case represents the Polish 400, 220 and 110 kV networks during
+%   winter 2003-04 evening peak conditions. Multiple centrally
+%   dispatchable generators at a bus have not been aggregated.
+%   Generators that are not centrally dispatchable in the Polish
+%   energy market are given a cost of zero.
+%
+%   Copyright (c) 2010 by Roman Korab <roman.korab@polsl.pl>
+%   Licensed under the Creative Commons Attribution 4.0
+%   International license, http://creativecommons.org/licenses/by/4.0/
+%
+
+pglib_opf_case2848_rte.m
+========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case2848_rte.m
+SHA-256: bf2ca2cbbdaaf55a1cb8da8b269d9b7730a64b0eaaa144e152c35ffc3620e9fe
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%CASE2848RTE
+%   AC Power flow data for French system.
+%   Please see CASEFORMAT for details on the case file format.
+%
+%   This case accurately represents the size and complexity of French
+%   very high voltage transmission network.
+%   Part of this data was sampled in the offline platform of iTesla.
+%   These data can be used to validate mathematical methods and tools.
+%   These data should NOT be used for operation
+%   nor planning of the French or European grids.
+%
+%   When publishing results using this data, please cite:
+%     C. Josz, S. Fliscounakis, J. Maeght, and P. Panciatici,
+%     "AC Power Flow Data in MATPOWER and QCQP Format: iTesla, RTE Snapshots, and PEGASE"
+%     http://arxiv.org/abs/1603.01533
+%
+%   Contacts (primary contact for this file : Jean Maeght):
+%   Cédric Josz, Stéphane Fliscounakis, Jean Maeght, Patrick Panciatici
+%   firstname.lastname@rte-france.com
+%   Réseau de Transport d'Electricité (French Transmission System Operator)
+%   Département Expertise Système, Immeuble "Le Colbert"
+%   9 rue de la Porte de Buc, 78000 Versailles Cedex, France
+%   March 4th, 2016
+%
+%   Copyright (c) 2016 by Cédric Josz, Stéphane Fliscounakis, Jean Maeght,
+%   and Patrick Panciatici
+%   Licensed under the Creative Commons Attribution 4.0 International license,
+%   http://creativecommons.org/licenses/by/4.0/
+%
+
+pglib_opf_case2853_sdet.m
+=========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case2853_sdet.m
+SHA-256: ebc3530331f27c3a8295df5abb6ca78f4da6a7c7260bf07350e092d3893dfeb1
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   A 2853 bus model created by the Sustainable Data Evolution Technology (SDET)
+%   tool.
+%
+%   https://egriddata.org/group/sustainable-data-evolution-technology-sdet
+%
+%   Developed by Renke Huang,
+%   Pacific Northwest National Laboratory, U.S.A.
+%   Provided in the public domain. June, 2018
+%
+
+pglib_opf_case2868_rte.m
+========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case2868_rte.m
+SHA-256: 8320a278a4f8a15d641402f994984174ea3f66a28e4a60a8893d15e4435a7eeb
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%CASE2868RTE
+%   AC Power flow data for French system.
+%   Please see CASEFORMAT for details on the case file format.
+%
+%   This case accurately represents the size and complexity of French
+%   very high voltage transmission network.
+%   Part of this data was sampled in the offline platform of iTesla.
+%   These data can be used to validate mathematical methods and tools.
+%   These data should NOT be used for operation
+%   nor planning of the French or European grids.
+%
+%   When publishing results using this data, please cite:
+%     C. Josz, S. Fliscounakis, J. Maeght, and P. Panciatici,
+%     "AC Power Flow Data in MATPOWER and QCQP Format: iTesla, RTE Snapshots, and PEGASE"
+%     http://arxiv.org/abs/1603.01533
+%
+%   Contacts (primary contact for this file : Jean Maeght):
+%   Cédric Josz, Stéphane Fliscounakis, Jean Maeght, Patrick Panciatici
+%   firstname.lastname@rte-france.com
+%   Réseau de Transport d'Electricité (French Transmission System Operator)
+%   Département Expertise Système, Immeuble "Le Colbert"
+%   9 rue de la Porte de Buc, 78000 Versailles Cedex, France
+%   March 4th, 2016
+%
+%   Copyright (c) 2016 by Cédric Josz, Stéphane Fliscounakis, Jean Maeght,
+%   and Patrick Panciatici
+%   Licensed under the Creative Commons Attribution 4.0 International license,
+%   http://creativecommons.org/licenses/by/4.0/
+%
+
+pglib_opf_case2869_pegase.m
+===========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case2869_pegase.m
+SHA-256: b0a3eca72319e8fd0a07f481335896d869863825adc172ea09bb5e9902c5589a
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%CASE2869PEGASE  Power flow data for large part of European system.
+%   Please see CASEFORMAT for details on the case file format.
+%
+%   This case accurately represents the size and complexity of part of the
+%   European high voltage transmission network. The network contains 2,869
+%   buses, 510 generators, and 4,582 branches and it operates at 380, 220,
+%   150, and 110 kV. Please note that the data are fictitious and do not
+%   correspond to real world data. They can thus be used to validate
+%   methods and tools but should not be used for operation and planning of
+%   the European grid.
+%
+%   The data stems from the Pan European Grid Advanced Simulation and State
+%   Estimation (PEGASE) project, part of the 7th Framework Program of the
+%   European Union (http://www.fp7-pegase.com/). When publishing results
+%   based on this data, please cite:
+%
+%     S. Fliscounakis, P. Panciatici, F. Capitanescu, and L. Wehenkel,
+%     "Contingency ranking with respect to overloads in very large power
+%     systems taking into account uncertainty, preventive and corrective
+%     actions", Power Systems, IEEE Trans. on, (28)4:4909-4917, 2013.
+%     http://dx.doi.org/10.1109/TPWRS.2013.2251015
+%
+%   Remarks:
+%
+%   1. Line flow limits are the current flow limits found in PEGASE data.
+%
+%   2. PEGASE data contains asymmetric shunt conductance and susceptance in
+%   the PI transmission line model of branches. Thus total line charging
+%   susceptance of branches is set to 0 p.u. and the nodal representation
+%   of shunt condutance and susceptance is used. As a result, power flow
+%   equations are left unchanged compared with original PEGASE data.
+%   However, line flow constraints in the optimal flow problem are
+%   modified.
+%
+%   3. Identical linear costs are used for all generators to form a loss
+%   minimizing OPF objective function.
+%
+%   4. Since some parts of the network are aggregated, some generators
+%   (e.g. with negative PMIN) represent aggregations of multiple loads
+%   and generators.
+%
+%   Cédric Josz, Stéphane Fliscounakis, Jean Maeght, Patrick Panciatici
+%   firstname.lastname@rte-france.com
+%   Réseau de Transport d'Electricité (French Transmission System Operator)
+%   Département Expertise Système, Immeuble "Le Colbert"
+%   9 rue de la Porte de Buc, 78000 Versailles Cedex, France
+%   March 18th, 2015
+%
+%   Copyright (c) 2015 by Cédric Josz, Stéphane Fliscounakis, Jean Maeght,
+%   and Patrick Panciatici
+%   Licensed under the Creative Commons Attribution 4.0 International license,
+%   http://creativecommons.org/licenses/by/4.0/
+%
+
+pglib_opf_case300_ieee.m
+========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case300_ieee.m
+SHA-256: db298bd79abecede4eb15754c242dc14d44724bc1eb3704fea015d8dd4af2fe1
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   Power flow data for IEEE 300 bus test case.
+%   This data was converted from IEEE Common Data Format
+%   (ieee300cdf.txt) on 20-Sep-2004 by cdf2matp, rev. 1.11
+%
+%   Converted from IEEE CDF file from:
+%       http://www.ee.washington.edu/research/pstca/
+%
+%   Copyright (c) 1999 by Richard D. Christie, University of Washington
+%   Electrical Engineering Licensed under the Creative Commons Attribution 4.0
+%   International license, http://creativecommons.org/licenses/by/4.0/
+%
+%   CDF Header:
+%   13/05/91 CYME INTERNATIONAL    100.0 1991 S IEEE 300-BUS TEST SYSTEM
+%
+
+pglib_opf_case30_as.m
+=====================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case30_as.m
+SHA-256: bccbfb667aa4db711370c2d782120bb3d9e47ef939c2ddff9bd47ab67a5727a7
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   Power flow data for 30 bus, 6 generator case.
+%
+%   Alsac, O. & Stott, B., "Optimal Load Flow with Steady State Security",
+%   IEEE Transactions on Power Apparatus and Systems, Vol. PAS 93, No. 3,
+%   1974, pp. 745-751.
+%
+%   The generation MVA limit is used for Q upper bounds
+%   Shunts assumed to be in real value (not p.u. as specified in the paper)
+%
+%   Copyright (c) 1974 by The Institute of Electrical and Electronics Engineers (IEEE)
+%   Licensed under the Creative Commons Attribution 4.0
+%   International license, http://creativecommons.org/licenses/by/4.0/
+%
+%   Contact M.E. Brennan (me.brennan@ieee.org) for inquries on further reuse of
+%   this dataset.
+%
+
+pglib_opf_case30_ieee.m
+=======================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case30_ieee.m
+SHA-256: 0b7289c8903b5a5181bd27fcb2fd4123fac72b16f903448d7618d391b6ecc185
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   Power flow data for IEEE 30 bus test case.
+%   This data was converted from IEEE Common Data Format
+%   (ieee30cdf.txt) on 20-Sep-2004 by cdf2matp, rev. 1.11
+%
+%   Converted from IEEE CDF file from:
+%       http://www.ee.washington.edu/research/pstca/
+%
+%   Copyright (c) 1999 by Richard D. Christie, University of Washington
+%   Electrical Engineering Licensed under the Creative Commons Attribution 4.0
+%   International license, http://creativecommons.org/licenses/by/4.0/
+%
+%   CDF Header:
+%   08/20/93 UW ARCHIVE           100.0  1961 W IEEE 30 Bus Test Case
+%
+
+pglib_opf_case39_epri.m
+=======================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case39_epri.m
+SHA-256: f0e1398fff3960991ae27615e2b2f2a6eb85cce1993d5590301c8ed93deb0e67
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   CASE39 Power flow data for 39 bus New England system.
+%
+%   Data taken from [1] with the following modifications/additions:
+%
+%       - renumbered gen buses consecutively (as in [2] and [4])
+%       - added Pmin = 0 for all gens
+%       - added Qmin, Qmax for gens at 31 & 39 (copied from gen at 35)
+%       - added Vg based on V in bus data (missing for bus 39)
+%       - added Vg, Pg, Pd, Qd at bus 39 from [2] (same in [4])
+%       - added Pmax at bus 39: Pmax = Pg + 100
+%       - added line flow limits and area data from [4]
+%       - added voltage limits, Vmax = 1.06, Vmin = 0.94
+%       - added identical quadratic generator costs
+%       - increased Pmax for gen at bus 34 from 308 to 508
+%         (assumed typo in [1], makes initial solved case feasible)
+%       - re-solved power flow
+%
+%   Notes:
+%       - Bus 39, its generator and 2 connecting lines were added
+%         (by authors of [1]) to represent the interconnection with
+%         the rest of the eastern interconnect, and did not include
+%         Vg, Pg, Qg, Pd, Qd, Pmin, Pmax, Qmin or Qmax.
+%       - As the swing bus, bus 31 did not include and Q limits.
+%       - The voltages, etc in [1] appear to be quite close to the
+%         power flow solution of the case before adding bus 39 with
+%         it's generator and connecting branches, though the solution
+%         is not exact.
+%       - Explicit voltage setpoints for gen buses are not given, so
+%         they are taken from the bus data, however this results in two
+%         binding Q limits at buses 34 & 37, so the corresponding
+%         voltages have probably deviated from their original setpoints.
+%       - The generator locations and types are as follows:
+%           1   30      hydro
+%           2   31      nuke01
+%           3   32      nuke02
+%           4   33      fossil02
+%           5   34      fossil01
+%           6   35      nuke03
+%           7   36      fossil04
+%           8   37      nuke04
+%           9   38      nuke05
+%           10  39      interconnection to rest of US/Canada
+%
+%   This is a solved power flow case, but it includes the following
+%   violations:
+%       - Pmax violated at bus 31: Pg = 677.87, Pmax = 646
+%       - Qmin violated at bus 37: Qg = -1.37,  Qmin = 0
+%
+%   References:
+%   [1] G. W. Bills, et.al., "On-Line Stability Analysis Study"
+%       RP90-1 Report for the Edison Electric Institute, October 12, 1970,
+%       pp. 1-20 - 1-35.
+%       prepared by E. M. Gulachenski - New England Electric System
+%                   J. M. Undrill     - General Electric Co.
+%       "generally representative of the New England 345 KV system, but is
+%        not an exact or complete model of any past, present or projected
+%        configuration of the actual New England 345 KV system.
+%   [2] M. A. Pai, Energy Function Analysis for Power System Stability,
+%       Kluwer Academic Publishers, Boston, 1989.
+%       (references [3] as source of data)
+%   [3] Athay, T.; Podmore, R.; Virmani, S., "A Practical Method for the
+%       Direct Analysis of Transient Stability," IEEE Transactions on Power
+%       Apparatus and Systems , vol.PAS-98, no.2, pp.573-584, March 1979.
+%       URL: http://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=4113518&isnumber=4113486
+%       (references [1] as source of data)
+%   [4] Data included with TC Calculator at http://www.pserc.cornell.edu/tcc/
+%       for 39-bus system.
+%
+%   Copyright (c) 1989 by The Institute of Electrical and Electronics Engineers (IEEE)
+%   Licensed under the Creative Commons Attribution 4.0
+%   International license, http://creativecommons.org/licenses/by/4.0/
+%
+%   Contact M.E. Brennan (me.brennan@ieee.org) for inquries on further reuse of
+%   this dataset.
+%
+
+pglib_opf_case500_goc.m
+=======================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case500_goc.m
+SHA-256: 4d93986caddf3ed15a0f7c5734e2559137b53bea61e39ffcf6a36e9e46b779c6
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   This is a synthetic 500 bus case, developed for use in ARPA-e's Grid
+%   Optimization Competition, Challenge 1.
+%
+%   https://gocompetition.energy.gov/challenges/22/datasets
+%
+%   When publishing results based on this data, please cite:
+%
+%   [1] A.B. Birchfield, T. Xu, K.M. Gegner, K.S. Shetye, T.J. Overbye,
+%       "Grid Structural Characteristics as Validation Criteria for
+%       Synthetic Networks," IEEE Transactions on Power Systems, 2017.
+%
+%   February, 2020
+%
+%   Copyright (c) 2020 by A.B. Birchfield, H. Li, J. Wert, J. Yeo, T. Xu,
+%   and T.J. Overbye
+%   Licensed under the Creative Commons Attribution 4.0 International license,
+%   http://creativecommons.org/licenses/by/4.0/
+%
+
+pglib_opf_case57_ieee.m
+=======================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case57_ieee.m
+SHA-256: 5741014bab4cf7fa22bc03a4fc18afd71a68114ae458a2b7536d87ea5ee43884
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   Power flow data for IEEE 57 bus test case.
+%   This data was converted from IEEE Common Data Format
+%   (ieee57cdf.txt) on 20-Sep-2004 by cdf2matp, rev. 1.11
+%
+%   Converted from IEEE CDF file from:
+%       http://www.ee.washington.edu/research/pstca/
+%
+%   Manually modified Qmax, Qmin on generator 1 to 200, -140, respectively.
+%
+%   Copyright (c) 1999 by Richard D. Christie, University of Washington
+%   Electrical Engineering Licensed under the Creative Commons Attribution 4.0
+%   International license, http://creativecommons.org/licenses/by/4.0/
+%
+%   CDF Header:
+%   08/25/93 UW ARCHIVE           100.0  1961 W IEEE 57 Bus Test Case
+%
+
+pglib_opf_case588_sdet.m
+========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case588_sdet.m
+SHA-256: e4609c4894972f59119cb6b425e4a9ebcc29757fcd2119392ea57bcd9c613932
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   A 500 bus model created by the Sustainable Data Evolution Technology (SDET)
+%   tool.
+%
+%   https://egriddata.org/group/sustainable-data-evolution-technology-sdet
+%
+%   Developed by Ruisheng Diao
+%   Provided in the public domain. March, 2018
+%
+
+pglib_opf_case60_c.m
+====================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case60_c.m
+SHA-256: 2a86b801daecb8a959daa8e19e14746f1220a86c8654c3538f4d44f97eec03c9
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   This network data stems from the Nordic32 test system initially developed
+%   by CIGRE Task Force 38.02.08, “Long-term dynamics, phase II” in 1995. These
+%   data were further enriched by the research group of Thierry Van Cutsem and
+%   then by Florin Capitanescu to include: (i) OPF-related data (physical
+%   limits, cost functions); (ii) definition of various AC-OPF/SCOPF problems;
+%   and (iii) data conversion from initial format into the MATPOWER (.m)
+%   format. Note that AC-OPF formulations of this dataset have traditionally
+%   modeled thermal limits in terms of current but this version of the dataset
+%   uses MVA limits.
+%
+%   This power system model contains 60 buses, 23 generators, 57 lines,
+%   31 transformers (out of which 8 OLTCs, the last 8 branch records),
+%   22 loads, and 12 shunt elements.
+%
+%   Historically, this data has been used to solve various instances of
+%   AC-OPF/SCOPF problems with different objective functions, sets of decision
+%   variables including, generators active/reactive powers, ratio of LTC
+%   transformers, reactance of shunt capacitors/reactors) and constraints. Some
+%   of the OPF results can be found at:
+%
+%      https://people.montefiore.uliege.be/capitane
+%
+%   Researchers looking to include control variables like transformer tap ratio
+%   and shunt reactance or N-1 contingencies can contact Florin Capitanescu for
+%   the associated data.
+%
+%   When publishing results based on this data a suitable reference is:
+%
+%   [1] F. Capitanescu, "Suppressing ineffective control actions in optimal
+%       power flow problems", IET Generation, Transmission & Distribution, 2020.
+%
+%   February, 2021
+%
+%   Copyright (c) 2021 by Florin Capitanescu <fcapitanescu@yahoo.com>
+%   Licensed under the Creative Commons Attribution 4.0
+%   International license, http://creativecommons.org/licenses/by/4.0/
+%
+
+pglib_opf_case73_ieee_rts.m
+===========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case73_ieee_rts.m
+SHA-256: a9894ceeb14a806e644bd4580d89bc09ba3a7f430c8befd6bdcf5f6952682a8e
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   Power flow data for the IEEE RELIABILITY TEST SYSTEM 1996.
+%
+%   IEEE Reliability Test System Task Force of Applications of
+%   Probability Methods Subcommittee, "IEEE reliability test system-96,"
+%   IEEE Transactions on Power Systems, Vol. 14, No. 3, Aug. 1999,
+%   pp. 1010-1020.
+%
+%   See also (this network is three replicates of the RTS-79 system):
+%   IEEE Reliability Test System Task Force of the Applications of
+%   Probability Methods Subcommittee, "IEEE reliability test system,"
+%   IEEE Transactions on Power Apparatus and Systems, Vol. 98, No. 6,
+%   Nov./Dec. 1979, pp. 2047-2054.
+%
+%   Cost data is from Web site run by Georgia Tech Power Systems Control
+%   and Automation Laboratory:
+%       http://pscal.ece.gatech.edu/testsys/index.html
+%
+%   Converted from data files on:
+%       http://www.ee.washington.edu/research/pstca/rts/pg_tcarts.htm
+%
+%   Does not include optional DC link
+%   Bus voltage bounds from Matpower standard +/- 6% off nominal
+%   Reactive compensation at buses 106, 206, 306 is essential for feasibility due to
+%   line charging on branch 6-10.  A shunt of 100 MVar is indicated in the RTS-79 paper.
+%
+%   Matpower case file data provided by Clayton Barrows, Carleton Coffrin,
+%   and NICTA's Optisation Research Group.
+%
+%   Copyright (c) 1999 The Institute of Electrical and Electronics Engineers (IEEE)
+%   Licensed under the Creative Commons Attribution 4.0
+%   International license, http://creativecommons.org/licenses/by/4.0/
+%
+%   Contact M.E. Brennan (me.brennan@ieee.org) for inquries on further reuse of
+%   this dataset.
+%
+
+pglib_opf_case793_goc.m
+=======================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case793_goc.m
+SHA-256: 6e1c5833acab6159958ae8cf2e953e7de909eebcb6f9b906ab3fd5365e67e74f
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   A 793 bus model created by the Sustainable Data Evolution Technology (SDET)
+%   tool for use in ARPA-e's Grid Optimization Competition, Challenge 1.
+%
+%   https://gocompetition.energy.gov/challenges/22/datasets
+%
+%   Developed by Renke Huang and Ahmad Tbaileh,
+%   Pacific Northwest National Laboratory, U.S.A.
+%   Provided in the public domain. February, 2020
+%
+
+pglib_opf_case89_pegase.m
+=========================
+Source: https://raw.githubusercontent.com/power-grid-lib/pglib-opf/01681386d084d8bd03b429abcd1ee6966f68b9a3/pglib_opf_case89_pegase.m
+SHA-256: da581b56c67a019d54f915fea330be4914f280851d7dd29ab32b332d40d50914
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%                                                                  %%%%%
+%%%%    IEEE PES Power Grid Library - Optimal Power Flow - v21.07     %%%%%
+%%%%          (https://github.com/power-grid-lib/pglib-opf)           %%%%%
+%%%%               Benchmark Group - Typical Operations               %%%%%
+%%%%                         29 - July - 2021                         %%%%%
+%%%%                                                                  %%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%CASE89PEGASE  Power flow data for small part of European system.
+%   Please see CASEFORMAT for details on the case file format.
+%
+%   This case accurately represents the size and complexity of part of the
+%   European high voltage transmission network. The network contains 89
+%   buses, 12 generators, and 210 branches and it operates at 380, 220, and
+%   150 kV. Please note that the data are fictitious and do not correspond
+%   to real world data. They can thus be used to validate methods and tools
+%   but should not be used for operation and planning of the European grid.
+%
+%   The data stems from the Pan European Grid Advanced Simulation and State
+%   Estimation (PEGASE) project, part of the 7th Framework Program of the
+%   European Union (http://www.fp7-pegase.com/). When publishing results
+%   based on this data, please cite:
+%
+%     S. Fliscounakis, P. Panciatici, F. Capitanescu, and L. Wehenkel,
+%     "Contingency ranking with respect to overloads in very large power
+%     systems taking into account uncertainty, preventive and corrective
+%     actions", Power Systems, IEEE Trans. on, (28)4:4909-4917, 2013.
+%     http://dx.doi.org/10.1109/TPWRS.2013.2251015
+%
+%   Remarks:
+%
+%   1. Line flow limits are 20 MVA (at 1 p.u. voltage) greater than the
+%   current flow limits found in PEGASE data.
+%
+%   2. PEGASE data contains asymmetric shunt conductance and susceptance in
+%   the PI transmission line model of branches. Thus total line charging
+%   susceptance of branches is set to 0 p.u. and the nodal representation
+%   of shunt condutance and susceptance is used. As a result, power flow
+%   equations are left unchanged compared with original PEGASE data.
+%   However, line flow constraints in the optimal flow problem are
+%   modified.
+%
+%   3. Identical linear costs are used for all generators to form a loss
+%   minimizing OPF objective function.
+%
+%   4. Since some parts of the network are aggregated, some generators
+%   (e.g. with negative PMIN) represent aggregations of multiple loads
+%   and generators.
+%
+%   Cédric Josz, Stéphane Fliscounakis, Jean Maeght, Patrick Panciatici
+%   firstname.lastname@rte-france.com
+%   Réseau de Transport d'Electricité (French Transmission System Operator)
+%   Département Expertise Système, Immeuble "Le Colbert"
+%   9 rue de la Porte de Buc, 78000 Versailles Cedex, France
+%   March 18th, 2015
+%
+%   Copyright (c) 2015 by Cédric Josz, Stéphane Fliscounakis, Jean Maeght,
+%   and Patrick Panciatici
+%   Licensed under the Creative Commons Attribution 4.0 International license,
+%   http://creativecommons.org/licenses/by/4.0/
+%

@@ -1,0 +1,16 @@
+# Generated results and solver output.
+/check/results/
+*.log
+*.lp
+*.mps
+*.rew
+*.dec
+
+# Python environment and bytecode.
+.venv/
+__pycache__/
+*.py[cod]
+
+# Local files.
+.DS_Store
+AGENTS.md

@@ -1,0 +1,94 @@
+[USER_ENVIRONMENT]
+
+    [USER_ENVIRONMENT.PRECISION]
+        SOLVER_PRECISION_DIGITS                 = 6
+
+    [USER_ENVIRONMENT.DIRECTORIES]
+        # slack-related constants
+        SLACK_CACHE_DIR                         = 'joinpath("check", "results", "scots_slack")'
+        SLACK_CACHE_FILETYPE                    = ".csv" # csv only
+        SLACKED_CASES_DIR                       = 'joinpath("check", "results", "slacked_casefiles")'
+        SLACKED_CASE_FILETYPE                   = "slacked.m"
+
+        # input dirs
+        INSTANCE_DIR                            = 'joinpath("check", "instances")'
+        SETTINGS_DIR                            = "settings"
+        SOL_DIR                                 = 'joinpath("check", "sol")'
+        PLOT_DIR                                = 'joinpath("check", "results", "plots")'
+
+        # log export
+        SOLVER_LOG_DIR                          = 'joinpath("check", "results", "logs")'
+        LOG_DIR                                 = 'joinpath("check", "results", "logs")'
+        RESULTS_DIR                             = 'joinpath("check", "results")'
+
+    [USER_ENVIRONMENT.BUSBAR_RECONFIGURATION]
+        SUBSTATION_NAME_FILTERS                 = {"pglib" = "(x -> split(x, \"_\")[1])"}
+
+[INTERNAL_MAPPINGS]
+
+    # dictionary of currently supported AC approx. and relax. formulations
+    # quadratic approximations: APPROX, DCPLL, LPACC; quadratic relaxations: RELAX, SOCWR, QCRM, QCLS
+    MODEL_SHORTNAMES_MAP                        = {"APPROX" = "DCPLLPowerModel", "DCPLL" = "DCPLLPowerModel", "LPACC" = "LPACCPowerModel", "RELAX" = "SOCWRPowerModel", "SOCWR" = "SOCWRPowerModel", "QCRM" = "QCRMPowerModel", "QCLS" = "QCLSPowerModel"}
+
+    [INTERNAL_MAPPINGS.FORMULATIONS]
+        # currently supported network formulations
+
+        SCOTS_FORMULATIONS                      = {"linear" = ["DCPPowerModel", "DCMPPowerModel", "NFAPowerModel"], "relax" = ["SOCWRPowerModel", "QCRMPowerModel", "QCLSPowerModel"], "approx" = ["DCPLLPowerModel", "LPACCPowerModel"], "nonconvex" = ["ACPPowerModel"]}
+        SCOTS_SLACK_FORMULATIONS                = {"linear" = ["DCPPowerModel", "DCMPPowerModel", "NFAPowerModel"], "relax" = ["SOCWRPowerModel", "QCRMPowerModel", "QCLSPowerModel"], "approx" = ["DCPLLPowerModel"], "nonconvex" = ["ACPPowerModel"]}
+
+    [INTERNAL_MAPPINGS.OBJECTIVE_FUNCTIONS]
+
+        # list of currently supported objective functions for SCOTS-SLACK
+        SCOTS_SLACK_OBJ_FUNCTIONS               = ["objective_min_slack_absolute_quadratic", "objective_min_slack_absolute_linear", "objective_min_slack_relative_quadratic", "objective_min_slack_relative_linear"]
+
+        # list of currently supported objective functions for SCOTS-TIME
+        SCOTS_TIME_OBJ_FUNCTIONS                = ["objective_min_redispatch", "objective_min_num_redispatch", "objective_min_redispatch_cost"]
+
+    [INTERNAL_MAPPINGS.SLACK_VARIABLES]
+
+        DEFAULT_SLACK_TYPES                     = [":pg", ":ratea", ":dclinepf", ":vad"] # ":vm" is also possible, but not recommended
+
+        # dictionary of slack variables used for different network components
+        RESULT_ARRAY_SLACK_VARIABLE_NAME_MAP    = {"ratea" = ["raf_s", "rat_s"], "vad" = ["vadf_su", "vadt_su", "vadf_sl", "vadt_sl"], "pg" = ["pmin_slack", "pmax_slack"], "qg" = ["qmin_slack", "qmax_slack"], "dclinepf" = ["p_dc_slack_lower", "p_dc_slack_upper"], "vm" = ["vm_slack_lower", "vm_slack_upper"], "pd" = ["pd_slack_lower", "pd_slack_upper"], "qd" = ["qd_slack_lower", "qd_slack_upper"]}
+
+        SLACK_VARIABLE_INTERNAL_NAME_MAP        = {"ratea" = [":rate_a_slack", ":rate_a_slack_sec"], "vad" = [":vad_slack_lower", ":vad_slack_upper"], "pg" = [":pmin_slack", ":pmax_slack"], "qg" = [":qmin_slack", ":qmax_slack"], "dclinepf" = [":p_dc_slack_lower", ":p_dc_slack_upper"], "vm" = [":vm_slack_lower", ":vm_slack_upper"], "pd" = [":pd_slack_lower", ":pd_slack_upper"], "qd" = [":qd_slack_lower", ":qd_slack_upper"]}
+
+        SLACK_COMPONENT_TYPE                    = {"pg" = ":gen", "qg" = ":gen", "ratea" = ":branch", "dclinepf" = ":dcline", "vad" = ":branch", "vm" = ":bus", "pd" = ":load", "qd" = ":load"}
+
+        # slack_variable => (<add to/subtract from>, <network parameter>)
+        SLACK_VARIABLE_CALC_MAP                 = {"pmin_slack" = '((-),"pmin")', "pmax_slack" = '((+),"pmax")', "qmin_slack" = '((-),"qmin")', "qmax_slack" = '((+),"qmax")', "raf_s" = '((+),"rate_a")', "rat_s" = '((+),"rate_a")', "vadf_sl" = '((-),"angmin")', "vadf_su" = '((+),"angmax")', "vadt_sl" = '((-),"angmin")', "vadt_su" = '((+),"angmax")', "vm_slack_lower" = '((-),"vm")', "vm_slack_upper" = '((+),"vm")', "pd_slack_lower"  = '((-), "pd")', "pd_slack_upper" = '((+), "pd")'}
+
+        SOLVER_NAME_MAP                         = {"FullLPSolver" = " FLP", "LinEqSysSolver" = "  LQ", "LinEqSysBBSolver" = " LQB", "LPSolver" = "  LP", "LinEqSysRfSolver" = " LQR", "LinEqSysBBRfSolver" = " LQBR"}
+
+[TEST_SETS]
+    # small testset for quick checks
+    SMALL_TESTSET = [
+            "pglib_opf_case3_lmbd.m",
+            "pglib_opf_case5_pjm.m",
+            "pglib_opf_case14_ieee.m",
+            "pglib_opf_case24_ieee_rts.m",
+            "pglib_opf_case30_as.m"
+    ]
+
+    PIPELINE_TESTSET = [
+            "pglib_opf_case14_ieee", 
+            "pglib_opf_case24_ieee_rts", 
+            "pglib_opf_case30_ieee", 
+            "pglib_opf_case39_epri",
+            "pglib_opf_case57_ieee",
+            "pglib_opf_case73_ieee_rts",
+            #"pglib_opf_case118_ieee"
+    ]
+
+    PIPELINE_TESTSET_SMALL = [
+            "pglib_opf_case14_ieee", 
+            "pglib_opf_case24_ieee_rts"
+    ]
+
+    # very small testset for AC quick checks
+    AC_NONCONVEX_TESTSET = [
+            "pglib_opf_case5_pjm.m"
+    ]
+
+[OTHER]
+    GUROBI_ENV                                      = "Gurobi.Env()"

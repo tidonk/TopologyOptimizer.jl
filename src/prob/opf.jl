@@ -1,0 +1,81 @@
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#                                                                           #
+#  Copyright 2026 Operations Research, RWTH Aachen University               #
+#                                                                           #
+#  Licensed under the Apache License, Version 2.0 (the "License");          #
+#  you may not use this file except in compliance with the License.         #
+#  You may obtain a copy of the License at                                  #
+#                                                                           #
+#      http://www.apache.org/licenses/LICENSE-2.0                           #
+#                                                                           #
+#  Unless required by applicable law or agreed to in writing, software      #
+#  distributed under the License is distributed on an "AS IS" BASIS,        #
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. #
+#  See the License for the specific language governing permissions and      #
+#  limitations under the License.                                           #
+#                                                                           #
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+function solve_opf_slack(file, model_type::Type, optimizer; kwargs...)
+    return solve_model(file, model_type, optimizer, build_opf_slack; kwargs...)
+end
+
+""
+function build_opf_slack(pm::AbstractPowerModel; nw::Int=nw_id_default)
+    variable_bus_voltage(pm, nw=nw)
+    variable_gen_power(pm, nw=nw)
+    variable_branch_power(pm, nw=nw)
+    PARAMS[:LIMITS][:GENERATOR][:GEN_SWITCHING] && variable_gen_indicator(pm, nw=nw)
+    variable_rate_a_slack(pm, nw=nw)
+    variable_dcline_power(pm, nw=nw)
+    variable_gen_power_change(pm, nw=nw, bounded=false)
+    
+    weighted_obj_func_factory( 
+        [objective_min_redispatch_cost, objective_min_num_redispatch, objective_min_slack_relative_linear, objective_min_num_slacks],
+        [pm.data["cost_coeffs"]["redispatch"], pm.data["cost_coeffs"]["num_redispatch"], pm.data["cost_coeffs"]["overload"], pm.data["cost_coeffs"]["num_overload"]]
+    )(pm)
+   
+    if PARAMS[:LIMITS][:GENERATOR][:GEN_SWITCHING] 
+        for i in ids(pm, nw, :gen)
+            # ensure that pg is only != 0 if the gen is on
+            constraint_gen_power_on_off(pm, i, nw=nw)
+        end
+    end
+
+    constraint_model_voltage(pm, nw)
+
+    for i in ids(pm, nw, :ref_buses)
+        constraint_theta_ref(pm, i, nw=nw)
+    end
+
+    for i in ids(pm, nw, :bus)
+        constraint_power_balance(pm, i, nw=nw)
+    end
+
+    for i in ids(pm, nw, :branch)
+        if pm.data["BUSBARS"] && ! is_branch_electrical(pm, nw, i)
+            # for coupler or breaker, there is no thermal limit
+        else
+            @assert(ref(pm, nw, :branch, i)["angmin"] != 0, "angmin is not defined for branch $i: $(ref(pm, nw, :branch, i))")
+            constraint_ohms_yt_from(pm, i, nw=nw)
+            constraint_ohms_yt_to(pm, i, nw=nw)
+        end
+
+        constraint_voltage_angle_difference(pm, i, nw=nw)
+
+        if is_branch_monitored(pm, nw, i)
+            constraint_thermal_limit_from_slack(pm, i, nw=nw)
+            constraint_thermal_limit_to_slack(pm, i, nw=nw)
+        end
+    end
+
+    for i in ids(pm, nw, :dcline)
+        constraint_dcline_power_losses(pm, i, nw=nw)
+    end
+
+    for i in ids(pm, nw, :gen)
+        constraint_gen_power_delta_linking(pm, i, nw=nw)
+    end
+    
+    return pm 
+end

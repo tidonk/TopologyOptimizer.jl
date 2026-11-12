@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the paper below."
+type: software
+title: TopologyOptimizer.jl
+repository-code: "https://github.com/tidonk/TopologyOptimizer.jl"
+license: Apache-2.0
+authors:
+  - family-names: "Donkiewicz"
+    given-names: "Tim"
+  - family-names: "Gaul"
+    given-names: "Oliver"
+  - family-names: "Wittner"
+    given-names: "Dominic"
+preferred-citation:
+  type: unpublished
+  title: "Integrated Topology and Redispatch Optimization of Real-World Power Transmission Systems using Branch-and-Benders-Cut"
+  authors:
+    - family-names: "Donkiewicz"
+      given-names: "Tim"
+    - family-names: "Gaul"
+      given-names: "Oliver"
+    - family-names: "Lübbecke"
+      given-names: "Marco"
+  year: 2026
+  notes: "Preprint prepared for submission to arXiv."
