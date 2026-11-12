@@ -24,7 +24,7 @@ function compute_PTDF(data)#, br_ids::Vector{Int64} = collect(keys(data["branch"
     branch_count = length(data["branch"])
     
     # Identify the reference bus
-    slack_bus = parse(Int64, findfirst(bus -> bus["bus_type"] == 3, data["bus"]))
+    slack_bus = parse(Int64, findfirst(bus -> bus["bus_type"] == 3, data["bus"])[1])
     
     # Initialize B' matrix
     B_prime = zeros(bus_count, bus_count)
@@ -77,7 +77,6 @@ end
 
 "computes one entry of the LODF matrix"
 function compute_LODF(PTDF, branch_data_of_i::Dict, i::Int, j::Int)
-    i == j && return -1.0
     # Calculate LODF based on PTDF
     from_bus_i = branch_data_of_i["f_bus"]
     to_bus_i = branch_data_of_i["t_bus"]
@@ -144,9 +143,7 @@ function normalize_scores_with_weight!(scores::Dict{Int64, Float64}, weight::Flo
         @warn("$n_nan NaNs during branch score calculation.")
     end
 
-    isempty(scores) && return scores
     max_val = maximum(values(scores))
-    max_val == 0.0 && return scores
     
     # normalize
     for (branch_id, val) in scores
@@ -229,7 +226,7 @@ function calc_br_sw_heur_scores_sens(nw_data; only_switchable::Bool=true, nw_sol
         
     # collect power flow and branch indices of overloaded branches
     pfs = collect_pfs(nw_data, nw_sol)
-    congested_branches_idxs = [branch["index"] for (_, branch) ∈ nw_data["branch"] if is_branch_monitored(branch) && (abs(pfs[branch["index"]]) > SENS_LOAD_LIMIT * get_adjusted_rate_a(nw_data, branch))]
+    congested_branches_idxs = [branch["index"] for (_, branch) ∈ nw_data["branch"] if is_branch_monitored(branch) && (pfs[branch["index"]] > SENS_LOAD_LIMIT * get_adjusted_rate_a(nw_data, branch))]
     @info("Number of (nearly) overloaded branches with load limit $SENS_LOAD_LIMIT: $(length(congested_branches_idxs))")
 
     # if too few branches are congested, set congested_branches_idxs to the SENS_N_MIN_CONGESTED_BRANCHES branch ids
@@ -245,15 +242,7 @@ function calc_br_sw_heur_scores_sens(nw_data; only_switchable::Bool=true, nw_sol
     for (_, branch) in nw_data["branch"]
         if !only_switchable || is_branch_switchable(branch)
             k  = branch["index"]
-            # Opening k changes the flow on b by LODF[k,b] * pfs[k].
-            # Compare flow magnitudes after adding this signed change.
-            # The outage formula is undefined for a bridge and does not
-            # describe closing an initially open branch.
-            if branch["status"] == 0 || abs(1 - PTDF[k, branch["f_bus"]] + PTDF[k, branch["t_bus"]]) < 1e-10
-                br_sw_heur_scores[k] = 0.0
-                continue
-            end
-            s  = minimum([(abs(pfs[b] + pfs[k] * compute_LODF(PTDF, branch, k, b)) - abs(pfs[b])) / abs(pfs[b]) for b ∈ congested_branches_idxs if pfs[b] != 0], init = 0.0)
+            s  = minimum([(abs((pfs[k] * compute_LODF(PTDF, nw_data["branch"][string(b)], b, k)) + pfs[b]) - abs(pfs[b])) / abs(pfs[b]) for b ∈ congested_branches_idxs if pfs[b] != 0], init = 0.0)
             br_sw_heur_scores[branch["index"]]  = -s # turn around the sign, since we want higher scores for branches with large, negative sensitivity
         end
     end
@@ -400,13 +389,6 @@ function calc_br_sw_heur_scores(nw_data::Dict{String, Any}, weights::Dict; only_
     if weights[:CONGPROX] > 0
         mergewith!(+, br_sw_heur_scores, normalize_scores_with_weight!(calc_br_sw_heur_scores_congprox(nw_data; only_switchable=only_switchable, kwargs...), weights[:CONGPROX]))
     end
-    if get(weights, :ADMITTANCE_SECANT, 0.0) > 0
-        scores = calc_br_sw_heur_scores_admittance_secant(nw_data; only_switchable=only_switchable, kwargs...)
-        scale = maximum(abs, values(scores); init=0.0)
-        if scale > 0.0
-            mergewith!(+, br_sw_heur_scores, Dict(i => v / scale * weights[:ADMITTANCE_SECANT] for (i, v) in scores))
-        end
-    end
     if weights[:ETA] > 0
         mergewith!(+, br_sw_heur_scores, normalize_scores_with_weight!(calc_br_sw_heur_scores_eta(     nw_data; only_switchable=only_switchable, kwargs...), weights[:ETA]))
     end
@@ -441,8 +423,6 @@ function calc_and_set_br_sw_heur_scores!(nw_data;
     heur_weights = params[:WEIGHTS]
     branch_switching_scores::Dict{Int64, Float64} = calc_br_sw_heur_scores(nw_data, heur_weights; only_switchable=only_switchable, heur_params..., kwargs...)
     
-    isempty(branch_switching_scores) && return
-
     if set_switchability
         percentile = params[:N_SW_BR_REL]
         force_percentile = params[:N_SW_BR_FORCE]
@@ -451,7 +431,6 @@ function calc_and_set_br_sw_heur_scores!(nw_data;
         br_sw_heur_score_values::Vector{Float64} = sort(collect(values(branch_switching_scores)))
 
         if cutoff_mode == :abs_num
-            @assert params[:N_SW_BR_ABS] > 0 "The absolute branch budget must be positive"
             br_sw_heur_score_cutoff = br_sw_heur_score_values[max(1, length(br_sw_heur_score_values) - params[:N_SW_BR_ABS] + 1)]
         elseif cutoff_mode == :abs_score
             br_sw_heur_score_cutoff = params[:SW_BR_ABS_SCORE_LIM]
@@ -473,15 +452,6 @@ function calc_and_set_br_sw_heur_scores!(nw_data;
             # if the set is empty, the MIP might become an LP, not calling the callback, and thus making the remaining pipeline fail
             @warn("No switchable branches found with score above cutoff $br_sw_heur_score_cutoff. Setting the first branch as switchable.")
             sw_branches_after_score = [first(keys(branch_switching_scores))]
-        end
-
-        # An absolute budget includes initially open branches and resolves ties by branch ID.
-        if cutoff_mode == :abs_num && heur_weights[:FULL] == 0
-            initially_open = get(heur_params, :INITIALLY_OPEN_FIRST, false)
-            order = admittance_branch_order(nw_data, branch_switching_scores, keys(branch_switching_scores);
-                initially_open_first=initially_open)
-            sw_branches_after_score = order[1:min(params[:N_SW_BR_ABS], length(order))]
-            force_percentile = false
         end
 
         # filter out branches with the same score randomly

@@ -252,6 +252,11 @@ function check_primal_solution(solver::Union{AbstractMatrixSolver, LPSolver}, pm
     apply_ub_mults=(PARAMS[:LIMIT_MULT]::Dict{Symbol, Any})[:APPLY_UB_MULTS]::Bool
     for_n1 = get(pm.data, "SUBPROBLEM", false)::Bool
     for (branch_id, branch::Dict{Symbol, Any}) in solver.branch_data
+        # only check "normal" branches if in busbar mode. We do not use this information for the cut, so we do not have to check it either.
+        if ! is_branch_electrical(branch)
+            continue
+        end
+
         f_bus::Int64 = branch[:f_bus]
         t_bus::Int64 = branch[:t_bus]
 
@@ -259,12 +264,12 @@ function check_primal_solution(solver::Union{AbstractMatrixSolver, LPSolver}, pm
 
         # the matrix solver will always return a flow (based on the buses' angles), even if disconnected, off, or outaged. We do not use this information for the cut, so we do not have to check it either. However, we need to check vads for off branches
         if typeof(solver) <: AbstractMatrixSolver 
-            if solver.bus_to_col[f_bus] ≤ 0 || solver.bus_to_col[t_bus] ≤ 0 || branch_id ∈ outage_branches
+            if solver.bus_to_col[f_bus] ≤ 0 || solver.bus_to_col[t_bus] ≤ 0 || (branch_id ∈ outage_branches && ! is_branch_switchable(branch))
                 continue
             end
 
             # else
-            if is_off
+            if branch_id ∈ outage_branches || is_off
 
                 if PARAMS[:BIG_M_MULT][:SET_MAX_ANGLE_CLOSE]
                     # (5) check all off branches for vad violations - also non-electrical ones
@@ -284,10 +289,6 @@ function check_primal_solution(solver::Union{AbstractMatrixSolver, LPSolver}, pm
                 continue
             end
         end
-
-        # Active busbar couplers are represented by equal angles in the matrix.
-        # Off couplers still have angle bounds and were checked above.
-        is_branch_electrical(branch) || continue
 
         # calculate vad and pf
         vad = get_vad(solver, f_bus, t_bus)

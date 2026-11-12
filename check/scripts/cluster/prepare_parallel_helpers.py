@@ -8,7 +8,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[3]
-METHODS = ['scopf', 'rscots-rnd', 'rscots-full', 'rscots-sens', 'rscots-congprox', 'rscots-eta', 'rscots-fixdual']
+METHODS = ['scopf', 'rscots-rnd', 'rscots-full', 'rscots-sens', 'rscots-congprox', 'rscots-eta']
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -57,7 +57,7 @@ def main():
                 threads={'main':4,'helper':4,'julia_per_process':1}, memory_MB=[14000,20000], max_retries=1,
                 priority=args.priority,
                 selection='Top 16 by descending raw score, ascending branch id for ties; FULL is constant-score top 16',
-                fixing_dual_source='20261008-warmstart-grid/selection.jl')
+                )
     (dest/'source-provenance.json').write_text(json.dumps(spec,indent=2)+'\n')
     shutil.copy2(Path(__file__), dest/'prepare.py')
     (dest/'launch.py').write_text('''#!/usr/bin/env python3

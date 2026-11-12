@@ -24,30 +24,6 @@ Base.@kwdef mutable struct IncumbentExchange
     attempts::Int = 0
 end
 
-struct ParallelHelperFinished <: Exception
-    diagnostic::Dict{String,Any}
-end
-
-function parallel_main_finished()
-    return get(ENV, "INNOPTEM_EXCHANGE_STOP_WITH_MAIN", "0") == "1" &&
-        get(ENV, "INNOPTEM_EXCHANGE_ROLE", "") == "donor" &&
-        isfile(joinpath(get(ENV, "INNOPTEM_EXCHANGE_DIR", ""), "main.done"))
-end
-
-function stop_parallel_helper!(pm; solved=false)
-    diagnostic = Dict{String,Any}("reason" => "main_finished",
-        "tal" => PARAMS[:LIMITS][:BRANCH][:TAL_TIMESTEP],
-        "prior_warmstart_solver_seconds" => get(pm.data, "warmstart_time", 0.0),
-        "rscots_stages" => get(pm.data, "rscots_stages", Any[]),
-        "restricted_solver_controls" => get(pm.data, "restricted_solver_controls", nothing))
-    if solved
-        diagnostic["last_solve_seconds"] = solve_time(pm.model)
-        diagnostic["last_status"] = string(termination_status(pm.model))
-        diagnostic["last_objective"] = has_values(pm.model) ? objective_value(pm.model) : nothing
-    end
-    throw(ParallelHelperFinished(diagnostic))
-end
-
 function init_incumbent_exchange(pm; contingencies=Contingency[])
     ccall(:jl_generating_output, Cint, ()) == 1 && return nothing
     directory = get(ENV, "INNOPTEM_EXCHANGE_DIR", "")
@@ -57,24 +33,10 @@ function init_incumbent_exchange(pm; contingencies=Contingency[])
     role in (:donor, :receiver, :control) || error("Invalid incumbent exchange role")
     helper = get(ENV, "INNOPTEM_EXCHANGE_HELPER", "tal1")
     main_tal = parse(Int, get(ENV, "INNOPTEM_EXCHANGE_MAIN_TAL", "2"))
-    active = role == :donor ? (helper == "scopf" ? tal == 0 : helper == "rscots" ? tal in (0, 1) : helper == "rscots-sequential" ? 0 <= tal <= main_tal : tal == 1) : tal == main_tal
+    active = role == :donor ? (helper == "scopf" ? tal == 0 : helper == "rscots" ? tal in (0, 1) : tal == 1) : tal == main_tal
     active || return nothing
-    parallel_main_finished() && stop_parallel_helper!(pm)
     if role == :donor && helper == "rscots" && tal == 1
         restrict_parallel_helper!(pm)
-    elseif role == :donor && helper == "rscots-sequential" && tal == main_tal && !haskey(pm.data, "_rscots_stage")
-        haskey(pm.data, "_rscots_final_stage") || error("Staged RSCOTS requires a feasible SCOPF initialization")
-        stage = pm.data["_rscots_final_stage"]
-        restrict_rscots_stage!(pm, stage)
-        set_time_limit_sec(pm.model, min(time_limit_sec(pm.model), stage["time_limit"]))
-    end
-    if role == :donor && helper in ("rscots", "rscots-sequential") && tal > 0
-        config = PARAMS[:WARMSTARTING][:RSCOTS]
-        config[:HELPER_MIP_GAP] < 0 || set_optimizer_attribute(pm.model, "MIPGap", config[:HELPER_MIP_GAP])
-        config[:HELPER_DISABLE_OBJECTIVE_STOP] && set_optimizer_attribute(pm.model, "BestObjStop", -1e100)
-        pm.data["restricted_solver_controls"] = Dict(
-            "mipgap" => get_optimizer_attribute(pm.model, "MIPGap"),
-            "bestobjstop" => get_optimizer_attribute(pm.model, "BestObjStop"))
     end
     variables = JuMP.all_variables(pm.model)
     names = JuMP.name.(variables)
@@ -96,49 +58,22 @@ end
 function restrict_parallel_helper!(pm)
     haskey(pm.data, "result") || error("RSCOTS requires a feasible SCOPF initialization")
     score = Symbol(get(ENV, "INNOPTEM_EXCHANGE_SCORE", "SENS"))
-    methods = (:RND, :FULL, :SENS, :CONGPROX, :ETA, :FIXDUAL, :ADMITTANCE_SECANT)
+    methods = (:RND, :FULL, :SENS, :CONGPROX, :ETA)
     score in methods || error("Unknown RSCOTS score: $score")
     count = parse(Int, get(ENV, "INNOPTEM_EXCHANGE_SWITCHABLE", "16"))
     count > 0 || error("RSCOTS branch count must be positive")
     nw_data = pm.data["nw"]["1"]
     score_start = time()
-    if score == :ADMITTANCE_SECANT
-        config = PARAMS[:WARMSTARTING][:RSCOTS]
-        scores = calc_br_sw_heur_scores(nw_data, config[:WEIGHTS])
-        JuMP.set_time_limit_sec(pm.model, min(JuMP.time_limit_sec(pm.model), config[:TIME_LIMIT]))
-    elseif score == :FIXDUAL
-        remaining = parse(Float64, ENV["INNOPTEM_EXCHANGE_LIMIT"]) - (time() - exchange_epoch(ENV["INNOPTEM_EXCHANGE_DIR"]))
-        solver = JuMP.optimizer_with_attributes(() -> Gurobi.Optimizer(CONSTS[:OTHER][:GUROBI_ENV]),
-            "Threads" => PARAMS[:SOLVER][:MULTITHREADING][:N_THREADS_MIP_MP],
-            "TimeLimit" => max(0.0, remaining),
-            "LogFile" => joinpath(CONSTS[:USER_ENVIRONMENT][:DIRECTORIES][:RESULTS_DIR], "fixing-duals.log"))
-        # This auxiliary LP computes scores, not transferable incumbents/bounds.
-        scores, diagnostic = withenv("INNOPTEM_EXCHANGE_DIR" => nothing) do
-            parallel_fixed_topology_duals(pm.data, solver;
-                perturbation_check=get(ENV, "INNOPTEM_CHECK_DUAL_PERTURBATIONS", "0") == "1")
-        end
-        diagnostic["scoring_wall_seconds"] = time() - score_start
-        open(joinpath(CONSTS[:USER_ENVIRONMENT][:DIRECTORIES][:RESULTS_DIR], "fixing-duals.json"), "w") do io
-            JSON.print(io, diagnostic, 2)
-        end
-        isnothing(scores) && error("FIXDUAL requires an optimal fixing LP; see fixing-duals.json")
-    else
-        funcs = Dict(:RND => calc_br_sw_heur_scores_rnd, :FULL => calc_br_sw_heur_scores_full,
-            :SENS => calc_br_sw_heur_scores_sens, :CONGPROX => calc_br_sw_heur_scores_congprox,
-            :ETA => calc_br_sw_heur_scores_eta)
-        # Single-method rankings need no normalization (including all-zero scores).
-        scores = funcs[score](nw_data; nw_sol=pm.data["result"]["solution"]["nw"]["1"],
-            PARAMS[:HEURISTIC_SOLVING][:RSCOTS][:HEUR]...)
-    end
+    funcs = Dict(:RND => calc_br_sw_heur_scores_rnd, :FULL => calc_br_sw_heur_scores_full,
+        :SENS => calc_br_sw_heur_scores_sens, :CONGPROX => calc_br_sw_heur_scores_congprox,
+        :ETA => calc_br_sw_heur_scores_eta)
+    # Single-method rankings need no normalization (including all-zero scores).
+    scores = funcs[score](nw_data; nw_sol=pm.data["result"]["solution"]["nw"]["1"],
+        PARAMS[:HEURISTIC_SOLVING][:RSCOTS][:HEUR]...)
     z = var(pm, 1, :z_branch)
     ids = [id for (id, branch) in ref(pm, 1, :branch) if is_branch_switchable(branch)]
     all(id -> isfinite(scores[id]), ids) || error("Nonfinite RSCOTS scores")
-    if score == :ADMITTANCE_SECANT
-        ids = admittance_branch_order(nw_data, scores, ids;
-            initially_open_first=get(PARAMS[:WARMSTARTING][:RSCOTS][:HEUR], :INITIALLY_OPEN_FIRST, false))
-    else
-        sort!(ids; by=id -> (-scores[id], id))
-    end
+    sort!(ids; by=id -> (-scores[id], id))
     selected = Set(first(ids, min(count, length(ids))))
     for id in ids
         id in selected && continue
@@ -152,8 +87,6 @@ function restrict_parallel_helper!(pm)
         JSON.print(io, Dict("score" => string(score), "requested" => count,
             "selected" => sort(collect(selected)), "eligible" => length(ids),
             "scores" => Dict(string(id) => scores[id] for id in ids),
-            "solver_time_limit" => JuMP.time_limit_sec(pm.model),
-            "initially_open_first" => score == :ADMITTANCE_SECANT && get(PARAMS[:WARMSTARTING][:RSCOTS][:HEUR], :INITIALLY_OPEN_FIRST, false),
             "tie_break" => "ascending branch id", "scoring_wall_seconds" => time() - score_start), 2)
     end
 end
@@ -217,13 +150,6 @@ end
 "Poll independently of the fractional-separation budget; never wait for the donor."
 function exchange_callback!(state, pm, cb_data, cb_where)
     isnothing(state) && return
-    if state.role == :donor && time() - state.last_poll >= 0.1
-        state.last_poll = time()
-        if parallel_main_finished()
-            GRBterminate(cb_data.model)
-            return :stop
-        end
-    end
     if cb_where == GRB_CB_MIPSOL && get(ENV, "INNOPTEM_EXCHANGE_AUDIT", "0") == "1"
         obj = Ref{Cdouble}()
         GRBcbget(cb_data, cb_where, GRB_CB_MIPSOL_OBJ, obj)
@@ -334,7 +260,6 @@ function parallel_solve_start!(pm)
     directory = get(ENV, "INNOPTEM_EXCHANGE_DIR", "")
     isempty(directory) && return
     role = get(ENV, "INNOPTEM_EXCHANGE_ROLE", "off")
-    parallel_main_finished() && stop_parallel_helper!(pm)
     if PARAMS[:LIMITS][:BRANCH][:TAL_TIMESTEP] > 0 && get(ENV, "INNOPTEM_EXCHANGE_AUDIT", "0") == "1"
         JuMP.MOI.Utilities.attach_optimizer(JuMP.backend(pm.model))
         grb = JuMP.unsafe_backend(pm.model)
@@ -352,8 +277,7 @@ function parallel_solve_start!(pm)
     end
     if haskey(ENV, "INNOPTEM_EXCHANGE_LIMIT")
         remaining = parse(Float64, ENV["INNOPTEM_EXCHANGE_LIMIT"]) - (time() - exchange_epoch(directory))
-        current_limit = JuMP.time_limit_sec(pm.model)
-        JuMP.set_time_limit_sec(pm.model, min(something(current_limit, Inf), max(0.0, remaining)))
+        JuMP.set_time_limit_sec(pm.model, max(0.0, remaining))
     end
 end
 
@@ -374,21 +298,7 @@ function parallel_solve_finish!(pm)
     end
     tal = PARAMS[:LIMITS][:BRANCH][:TAL_TIMESTEP]
     objective = JuMP.has_values(pm.model) ? JuMP.objective_value(pm.model) : Inf
-    if role == :donor && haskey(pm.data, "_rscots_final_stage") && !haskey(pm.data, "_rscots_stage")
-        stage = pop!(pm.data, "_rscots_final_stage")
-        merge!(stage, Dict("objective" => objective, "solve_seconds" => solve_time(pm.model),
-            "status" => string(termination_status(pm.model))))
-        push!(pm.data["rscots_stages"], stage)
-    end
     dual = tal == 0 ? -Inf : JuMP.objective_bound(pm.model)
     exchange_event(state, tal == 0 ? "scopf" : "final"; objective, dual,
                    detail=string(JuMP.termination_status(pm.model)))
-    if get(ENV, "INNOPTEM_EXCHANGE_STOP_WITH_MAIN", "0") == "1"
-        main_tal = parse(Int, get(ENV, "INNOPTEM_EXCHANGE_MAIN_TAL", "2"))
-        if role in (:receiver, :control) && tal == main_tal
-            write(joinpath(directory, "main.done"), string(termination_status(pm.model)))
-        elseif parallel_main_finished()
-            stop_parallel_helper!(pm; solved=true)
-        end
-    end
 end

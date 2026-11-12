@@ -64,9 +64,6 @@ function create_master_problem!(pm::AbstractPowerModel, contingencies::Vector{Co
     end
     if haskey(pm.data, "_TimeLimit")
         standard_params["TimeLimit"] = pm.data["_TimeLimit"]
-    elseif get(PARAMS[:SOLVER], :INCLUDE_WARMSTART_TIME_LIMIT, false)
-        standard_params["TimeLimit"] = max(0.0, standard_params["TimeLimit"] - get(pm.data, "warmstart_time", 0.0))
-        pm.data["main_time_limit"] = standard_params["TimeLimit"]
     end
     if haskey(pm.data, "_BestObjStop")
         standard_params["BestObjStop"] = pm.data["_BestObjStop"]
@@ -408,9 +405,6 @@ function solve_subproblem(pm_sub::AbstractPowerModel,
         end
     end
     success_primal = ! hint_feascut && solve_primal!(solver)
-    if success_primal && solver isa AbstractMatrixSolver
-        success_primal = align_component_angles!(solver, master_var_vals, outage_branches)
-    end
     count_time!(clocks, callback_times, :contingency_primal, counter_fallback)
     ### -- ###
 
@@ -486,8 +480,7 @@ function solve_subproblem(pm_sub::AbstractPowerModel,
         # feasibility cut
         elseif PARAMS[:BENDERS][:SUBPROBLEM_SOLVER_DUAL_SOLVE] && typeof(solver) <: AbstractMatrixSolver && !is_opt_cut
             update_dual_feas!(solver, pm_sub, master_var_vals, outage_branches, betas, nw=nw) # update dual problem with primal solution
-            success_dual = solve_dual_feas!(solver) && check_dual_solution(solver) &&
-                           check_feasibility_ray(solver, master_var_vals, outage_branches, betas)
+            success_dual = solve_dual_feas!(solver) && check_dual_solution(solver)
         else
             success_dual = false
         end
@@ -625,7 +618,7 @@ function solve_subproblem(pm_sub::AbstractPowerModel,
 
         ### Check Cut ###
         # if the SP obj was not the same as the LHS val, something might be wrong with the cut, so run the fallback solver on it to be sure
-        if !is_cut_val_correct && (!is_opt_cut || PARAMS[:BENDERS][:CHECKS][:CHECK_FALLBACK_ON_CUT_VAL_DISAG])
+        if !is_cut_val_correct && PARAMS[:BENDERS][:CHECKS][:CHECK_FALLBACK_ON_CUT_VAL_DISAG]
             if hasproperty(solver, :fallback_solver)
                 @info("Checking with fallback solver, because cut value = $(round(new_η_val, digits=3)) ≠ $(round(obj_func_value, digits=3)) = LHS value and type is $type.")
                 old_rhss = apply_fallback_update!(solver.fallback_solver)
@@ -644,11 +637,24 @@ function solve_subproblem(pm_sub::AbstractPowerModel,
                     reset_fallback_update!(solver.fallback_solver, old_rhss)
                 end
 
-                # Infeasibility agreement does not validate the rejected ray.
-                # Return all fallback cuts, including nested levels and solver provenance.
-                callback_stats[:n_cut_value_fail] += 1
-                count_time!(clocks, callback_times, :contingency_cut_check, counter_fallback)
-                return new_con_fb, eta_fb, type_fb, solver_type
+                # No cut is a valid fallback result; propagate errors as well.
+                if isnothing(new_con_fb)
+                    callback_stats[:n_cut_value_fail] += 1
+                    count_time!(clocks, callback_times, :contingency_cut_check, counter_fallback)
+                    return new_con_fb, eta_fb, type_fb, solver_type
+                end
+                
+                # check whether the fallback solver agrees with the *corrected* cut value (i.e., the evaluated LHS) new_η_val
+                if (is_opt_cut && isapprox(new_η_val, eta_fb, atol=PARAMS[:BENDERS][:CHECKS][:CHECK_CUT_VALUE_TOL])) || !is_opt_cut && type_fb == :Feasibility
+                    @debug("[FB on cut val disagree] Fallback solver yielded the same cut.")
+                else
+                    @warn("[FB on cut val disagree] Fallback solver yielded cut of type $(type_fb) with value $(round(eta_fb, digits=3)) instead of $(type) with value $(round(new_η_val, digits=3)) (= evaluated LHS from cut). Using cut from fallback solver.")
+                    cut = new_con_fb[1]
+                    new_η_val = eta_fb
+                    type = type_fb
+                    callback_stats[:n_cut_value_fail] += 1
+                    #check_redcost(pm_sub.model)
+                end
             else
                 @warn("Last fallback solver $(typeof(solver)) in the solver chain added a cut that it doesn't agree with itself. This could hint at a poorly scaled cut. \n lhs val = $(round(new_η_val, digits=3)), SP obj func = $(round(obj_func_value, digits=3)), difference: $(round(new_η_val - obj_func_value, digits=3))")
             end
@@ -746,23 +752,16 @@ function solve_subproblem_multi(thread_id::Int64,
         c_id            = subproblem_prio_list[pos][:contingency_id]
         hint_feascut    = get(subproblem_prio_list[pos], :hint_feascut, false)
         outage_branches = get_outage_branches(pm_sub, contingencies[c_id], master_var_vals, filter=true, nw=nw)
-        # Already-open failed lines are also exempt from off-angle bounds, but
-        # must not be removed from the PF matrix or switched back on a second time.
-        all_outage_branches = get_outage_branches(pm_sub, contingencies[c_id], master_var_vals, nw=nw)
 
         # if no outage branch, apply adjusted rate a for master problem
-        if isempty(all_outage_branches)
+        if isempty(outage_branches)
             pm_sub.data["SUBPROBLEM"] = false
             apply_adjusted_rate_a!(pm_sub, sub_cons_for_duals, lhsss, for_n1=false, nw=nw)
         end
         # turn off z variable of outage branches
         switch_off_outage_branches!(master_var_vals, outage_branches)
         # apply additional, solver specific, modifications
-        solver_outages = solver isa AbstractMatrixSolver ? outage_branches : all_outage_branches
-        old_rhss = apply_contingency!(solver, pm_sub, solver_outages, master_var_vals, int_sol, nw=nw)
-        if solver isa AbstractMatrixSolver
-            apply_contingency!(solver.fallback_solver, pm_sub, all_outage_branches, master_var_vals, int_sol, nw=nw)
-        end
+        old_rhss = apply_contingency!(solver, pm_sub, outage_branches, master_var_vals, int_sol, nw=nw)
 
         # solve subproblem
         t = @elapsed begin 
@@ -774,7 +773,7 @@ function solve_subproblem_multi(thread_id::Int64,
                                                                  master_var_vals_var,
                                                                  lhsss, 
                                                                  dualss, 
-                                                                 all_outage_branches, # these vars are excluded from the cut + used to check primal and dual feasibility
+                                                                 outage_branches, # these vars are excluded from the cut + used to check primal and dual feasibility
                                                                  solver,
                                                                  cut_exprs,
                                                                  nw=nw, 
@@ -783,16 +782,12 @@ function solve_subproblem_multi(thread_id::Int64,
                                                                  prec_mult=prec_mult)
         end
 
-        if haskey(pm_sub.ext, :admittance_cuts) && type in (:Optimality, :Feasibility)
-            record_admittance_cut!(pm_sub, c_id, first(new_con), dualss)
-        end
-
         # reset additional modifications
-        reset_contingency!(solver, pm_sub, solver_outages, old_rhss, nw=nw)
+        reset_contingency!(solver, pm_sub, outage_branches, old_rhss, nw=nw)        
         # turn contingency branches back on if they were on before
         switch_on_outage_branches!(master_var_vals, outage_branches)
         # if no outage branch, apply adjusted rate a for master problem
-        if isempty(all_outage_branches)
+        if isempty(outage_branches) 
             pm_sub.data["SUBPROBLEM"] = true
             apply_adjusted_rate_a!(pm_sub, sub_cons_for_duals, lhsss, for_n1=true, nw=nw)
         end
@@ -1736,18 +1731,11 @@ function build_secure_ots_time_benders(pm::AbstractPowerModel; nw::Int64=1, n_th
         pm_subs[i] = create_subproblem!(deepcopy(pm), nw=nw)
     end
     sub_cons_for_dualss = get_sub_cons_for_duals.(pm_subs)
-    if get(pm.data, "_collect_admittance_scores", false) && !isempty(pm_subs)
-        pm.ext[:admittance_subproblem] = first(pm_subs)
-        first(pm_subs).ext[:admittance_cuts] = Any[]
-    end
     printst("Benders", "Built $n_threads subproblem$(n_threads > 1 ? "s" : "").")
 
     # if contingencies exist, initialize subproblem solvers
     if !isempty(contingencies)
         int_solvers = init_int_solvers(subproblem_solver_type, pm, pm_subs, n_threads, sub_cons_for_dualss, nw=nw)
-        if get(pm.data, "_collect_admittance_scores", false)
-            pm.ext[:admittance_solver] = first(int_solvers)
-        end
 
         # if cuts on fractional solutions should be generated, initialize the solvers
         if PARAMS[:BENDERS][:CUTS][:FRACTIONAL_SEPA_NODELIM] >= -1 || PARAMS[:BENDERS][:IN_OUT_STRENGTHENING][:ENABLED] || PARAMS[:BENDERS][:CUT_STRENGTHENING][:ENABLED]
@@ -1840,7 +1828,7 @@ function build_secure_ots_time_benders(pm::AbstractPowerModel; nw::Int64=1, n_th
 
     "callback that adds Benders cuts to the master problem"
     function benders_callback(cb_data, cb_where::Cint)
-        exchange_callback!(incumbent_exchange, pm, cb_data, cb_where) === :stop && return
+        exchange_callback!(incumbent_exchange, pm, cb_data, cb_where)
         # Check that we are in a valid fractional or integer node
         if cb_where != GRB_CB_MIPSOL && cb_where != GRB_CB_MIPNODE && cb_where != GRB_CB_MESSAGE
             return

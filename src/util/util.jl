@@ -977,7 +977,6 @@ function calculate_power_flow!(data, result, solver_convex; base_only=true)
 
     # solve the power flow to obtain values for branches and buses (non-Benders, without contingencies)
     result_pf = solve_secure_ots_time(data, DCPPowerModel, solver_convex, weighted_obj_func_factory([objective_min_gen_change, objective_min_num_gen_switch, objective_min_num_tr_switch, objective_min_num_branch_switch, objective_min_redispatch_cost, objective_min_num_redispatch, objective_min_slack_relative_linear, objective_min_num_slacks], [is_nested ? 0 : 100000, data["cost_coeffs"]["gen_sw"], data["cost_coeffs"]["tr_sw"], data["cost_coeffs"]["br_sw"], data["cost_coeffs"]["redispatch"], data["cost_coeffs"]["num_redispatch"], data["cost_coeffs"]["overload"], data["cost_coeffs"]["num_overload"]]), slack_types=data["slack_types"])
-    result["power_flow_solve_time"] = get(result, "power_flow_solve_time", 0.0) + result_pf["solve_time"]
     if result_pf["termination_status"] == JuMP.MOI.INFEASIBLE || result_pf["termination_status"] == JuMP.MOI.INFEASIBLE_OR_UNBOUNDED
         @error("Power flow calculation failed: $(result_pf["termination_status"]). Result from main problem run should also have been infeasible!")
         result["termination_status"] = "CUT_ERROR"

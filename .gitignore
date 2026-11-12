@@ -1,5 +1,8 @@
 # Generated results and solver output.
 /check/results/
+/demo-results/
+/full-results/
+/docker-results/
 *.log
 *.lp
 *.mps

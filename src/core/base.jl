@@ -196,6 +196,11 @@ function solve_model(data::Dict{String,<:Any}, model_type::Type, optimizer, buil
     parallel_solve_start!(pm)
     result = optimize_model!(pm, relax_integrality=relax_integrality, optimizer=optimizer, solution_processors=solution_processors)
     parallel_solve_finish!(pm)
+    # Preserve acceptance/fallback counts without changing solver decisions.
+    if haskey(pm.model.ext, :scip_hybrid_acceptance_stats)
+        result["scip_hybrid_acceptance"] = Dict(string(k) => v for
+            (k, v) in pm.model.ext[:scip_hybrid_acceptance_stats])
+    end
     Memento.debug(_LOGGER, "pm model solve and solution time: $(time() - start_time)")
 
     if PARAMS[:WRITING][:PRESOLVED] 

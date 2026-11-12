@@ -38,5 +38,5 @@ Or run a single settings file:
   - `periodic_remove = (JobStatus == 2 && (CurrentTime - JobStartDate) > 14400)` (remove running jobs after 4 hours)
 
 ## 6) Visualization
-The experiment comparison and plotting scripts are on the paper branches.
-Use the instructions on the branch for the corresponding paper.
+Use `check/scripts/reproduce_cutfiltering.py` for the cut filtering comparison
+and its performance profile. See the [reproduction instructions](../../../README.md).

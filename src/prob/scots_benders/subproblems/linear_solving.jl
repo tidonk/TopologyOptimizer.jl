@@ -17,8 +17,7 @@
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 "one angle reference per component of the physical PF matrix, including isolated buses"
-function pf_component_references(A::SparseArrays.SparseMatrixCSC; components=nothing)
-    # Optionally record component labels for aligning off-branch angles.
+function pf_component_references(A::SparseArrays.SparseMatrixCSC)
     visited = falses(size(A, 1))
     references = Int64[]
     pending = Int64[]
@@ -26,7 +25,6 @@ function pf_component_references(A::SparseArrays.SparseMatrixCSC; components=not
         visited[root] && continue
         push!(references, root)
         visited[root] = true
-        isnothing(components) || (components[root] = length(references))
         push!(pending, root)
         while !isempty(pending)
             column = pop!(pending)
@@ -35,32 +33,12 @@ function pf_component_references(A::SparseArrays.SparseMatrixCSC; components=not
                 # Sparse branch updates retain stored zeros; those are not edges.
                 if !iszero(A.nzval[entry]) && !visited[row]
                     visited[row] = true
-                    isnothing(components) || (components[row] = length(references))
                     push!(pending, row)
                 end
             end
         end
     end
     return references
-end
-
-"finds offsets satisfying x[to] - x[from] <= bound, or nothing for inconsistent bounds"
-function feasible_component_offsets(n::Int, bounds::Vector{Tuple{Int, Int, Float64}})
-    offsets = zeros(n)
-    # Bellman-Ford with an implicit zero-cost source to every component.
-    for _ in 1:n
-        changed = false
-        for (from, to, bound) in bounds
-            candidate = offsets[from] + bound
-            if candidate < offsets[to]
-                offsets[to] = candidate
-                changed = true
-            end
-        end
-        !changed && return offsets
-    end
-    # A negative cycle means no simultaneous choice of component angles exists.
-    return nothing
 end
 
 "grounds every component without modifying the physical matrix used for residual checks"

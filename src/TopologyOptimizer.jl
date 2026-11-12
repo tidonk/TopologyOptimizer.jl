@@ -100,8 +100,6 @@ include("util/param_reader.jl")
 include("util/util.jl")
 include("util/warmstart.jl")
 include("util/cut_carry_forward.jl")
-include("util/parallel_helper_scores.jl")
-include("util/admittance_scores.jl")
 include("util/parallel_incumbents.jl")
 include("util/common.jl")
 include("util/heuristics.jl")
@@ -210,12 +208,7 @@ function main(data_or_casefile::Union{String, Dict};
     solver_convex, solver_nlp, solver_minlp = initialize_solvers(casename, start_time, application=application)
 
     ### Preprocessing ###
-    try
-        preprocess_data!(data, application, slack_types, timesteps, nested, solver_convex, solver_nlp)
-    catch error
-        error isa RestrictedWarmstartFinished || rethrow()
-        return return_data ? (data, error.result) : error.result
-    end
+    preprocess_data!(data, application, slack_types, timesteps, nested, solver_convex, solver_nlp)
 
     ### Solve the application ###
     result = solve_application!(data, application, slack_types, timesteps, nested, solver_convex, solver_nlp)

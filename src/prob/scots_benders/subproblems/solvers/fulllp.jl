@@ -53,9 +53,6 @@ end
 "solves problem in its current state, returns success flag"
 function solve_primal!(solver::FullLPSolver)::Bool
     JuMP.optimize!(solver.pm.model)
-    if haskey(solver.pm.ext, :admittance_recovery)
-        record_admittance_lp!(solver)
-    end
 
     # for debugging - infeasible subproblems might hint at data errors
     if PARAMS[:BENDERS][:CHECKS][:CHECK_WITH_IIS] && JuMP.termination_status(solver.pm.model) == JuMP.MOI.INFEASIBLE
@@ -83,24 +80,37 @@ function apply_contingency!(solver::FullLPSolver, pm_sub::AbstractPowerModel, br
 
     for branch_id in branches
         branch = ref(pm_sub, nw, :branch, branch_id)
-        switchable = is_branch_switchable(branch)
-        tmp_rhss = tmp_rhsss[branch_id] = Dict{Symbol, Float64}()
 
-        # Ohm big-M bounds also restrict angles at z=0. Disable them together
-        # with the explicit angle bounds; the failed line carries no flow.
-        keys = switchable ? (:vad_on_off_lb, :vad_on_off_ub) : (:vad_lb, :vad_ub)
-        if is_branch_electrical(branch)
-            keys = (keys..., switchable ? :ohm_fr_on_off_lb : :ohm_fr_lb,
-                             switchable ? :ohm_fr_on_off_ub : :ohm_fr_ub)
-        end
-        for key in keys
-            con = solver.sub_cons_for_duals[key][branch_id]
-            tmp_rhss[key] = JuMP.normalized_rhs(con)
-            JuMP.set_normalized_rhs(con, endswith(string(key), "lb") ? -Inf : Inf)
-        end
+        # if branch is switchable, it has on/off constraints linked to z_branch, which was fixed in `fix_master_variables!` above
+        if ! is_branch_switchable(branch)
+            # prepare to save right hand sides of constraints
+            tmp_rhsss[branch["index"]] = Dict{Symbol, Float64}()
+            tmp_rhss = tmp_rhsss[branch["index"]]
 
-        if !switchable
-            JuMP.fix(var(pm_sub, nw, :p, (branch_id, branch["f_bus"], branch["t_bus"])), 0.0, force=true)
+            if is_branch_electrical(branch)
+                # get thermal limit constraints (only exist for electrical branches) and store rhss, then relax constraints by setting rhs to -/+ "large"
+                ohm_fr_ub = solver.sub_cons_for_duals[:ohm_fr_ub][branch["index"]]
+                ohm_fr_lb = solver.sub_cons_for_duals[:ohm_fr_lb][branch["index"]]
+
+                tmp_rhss[:ohm_fr_lb] = JuMP.normalized_rhs(ohm_fr_ub)
+                tmp_rhss[:ohm_fr_ub] = JuMP.normalized_rhs(ohm_fr_lb)
+
+                JuMP.set_normalized_rhs(ohm_fr_lb, -100000.0)
+                JuMP.set_normalized_rhs(ohm_fr_ub,  100000.0)
+            end
+
+            # get voltage angle difference constraints and store rhss, then relax constraints by setting rhs to -/+ "large"
+            vad_lb    = solver.sub_cons_for_duals[:vad_lb][branch["index"]]
+            vad_ub    = solver.sub_cons_for_duals[:vad_ub][branch["index"]]
+
+            tmp_rhss[:vad_lb]    = JuMP.normalized_rhs(vad_lb)
+            tmp_rhss[:vad_ub]    = JuMP.normalized_rhs(vad_ub)
+
+            JuMP.set_normalized_rhs(vad_lb,    -100000.0)
+            JuMP.set_normalized_rhs(vad_ub,     100000.0)
+
+            # fix p=0
+            JuMP.fix(var(pm_sub, nw, :p, (branch["index"], branch["f_bus"], branch["t_bus"])), 0.0, force=true)
         end
     end
 
@@ -111,11 +121,29 @@ end
 function reset_contingency!(solver::FullLPSolver, pm_sub::AbstractPowerModel, branches::Vector{Int64}, tmp_rhsss::Dict{Int64, Dict{Symbol, Float64}}; nw::Int64=nw_id_default)
     for branch_id in branches
         branch = ref(pm_sub, nw, :branch, branch_id)
-        for (key, rhs) in tmp_rhsss[branch_id]
-            JuMP.set_normalized_rhs(solver.sub_cons_for_duals[key][branch_id], rhs)
-        end
-        if !is_branch_switchable(branch)
-            JuMP.unfix(var(pm_sub, nw, :p, (branch_id, branch["f_bus"], branch["t_bus"])))
+
+        if ! is_branch_switchable(branch)
+            # get stored rhss
+            tmp_rhss = tmp_rhsss[branch["index"]]
+
+            if is_branch_electrical(branch)
+                # get thermal limit constraints (only exist for electrical branches) and apply stored rhss
+                ohm_fr_ub = solver.sub_cons_for_duals[:ohm_fr_ub][branch["index"]]
+                ohm_fr_lb = solver.sub_cons_for_duals[:ohm_fr_lb][branch["index"]]
+
+                JuMP.set_normalized_rhs(ohm_fr_lb, tmp_rhss[:ohm_fr_lb])
+                JuMP.set_normalized_rhs(ohm_fr_ub, tmp_rhss[:ohm_fr_ub]) 
+            end
+
+            # get voltage angle difference constraints and apply stored rhss
+            vad_lb    = solver.sub_cons_for_duals[:vad_lb][branch["index"]]
+            vad_ub    = solver.sub_cons_for_duals[:vad_ub][branch["index"]]
+
+            JuMP.set_normalized_rhs(vad_lb,    tmp_rhss[:vad_lb])
+            JuMP.set_normalized_rhs(vad_ub,    tmp_rhss[:vad_ub])
+
+            # unfix p
+            JuMP.unfix(var(pm_sub, nw, :p, (branch["index"], branch["f_bus"], branch["t_bus"])))
         end
     end
 end

@@ -87,13 +87,12 @@ def main():
     parser.add_argument("settings", type=Path)
     parser.add_argument("experiment")
     parser.add_argument("--time-limit", type=float)
-    parser.add_argument("--helper", choices=["tal1", "scopf", "rscots", "rscots-sequential"], default="tal1")
+    parser.add_argument("--helper", choices=["tal1", "scopf", "rscots"], default="tal1")
     parser.add_argument("--main-tal", type=int, default=2)
-    parser.add_argument("--score", choices=["RND", "FULL", "SENS", "CONGPROX", "ETA", "FIXDUAL", "ADMITTANCE_SECANT"], default="SENS")
+    parser.add_argument("--score", choices=["RND", "FULL", "SENS", "CONGPROX", "ETA"], default="SENS")
     parser.add_argument("--switchable", type=int, default=16)
     parser.add_argument("--threads", type=int, nargs=2, default=[4, 4])
     parser.add_argument("--no-sharing", action="store_true")
-    parser.add_argument("--stop-helper-with-main", action="store_true")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--audit-models", action="store_true")
     parser.add_argument("--startup-timeout", type=float, default=3600)
@@ -108,9 +107,6 @@ def main():
         parser.error("Use a finite positive startup timeout")
     if args.main_tal < 1 or args.switchable < 1:
         parser.error("Main TAL and switchable branch count must be positive")
-    if args.helper == "rscots-sequential" and args.main_tal == 1:
-        # Preserve the previously tested single-stage helper at TAL=1.
-        args.helper = "rscots"
     case, settings = args.case.resolve(), args.settings.resolve()
     output = args.output or ROOT / "check/results" / args.experiment / settings.stem / case.stem
     output = output.resolve()
@@ -127,8 +123,8 @@ def main():
     local = Path(tempfile.mkdtemp(prefix="innoptem-pair-"))
     mailbox = local / "exchange"
     mailbox.mkdir()
-    julia = os.environ.get("INNOPTEM_JULIA", shutil.which("julia") or "julia")
-    depot = os.environ.get("INNOPTEM_BASE_DEPOT", os.environ.get("JULIA_DEPOT_PATH", str(Path.home() / ".julia")))
+    julia = os.environ.get("INNOPTEM_JULIA", str(Path.home() / ".juliaup/bin/julia"))
+    depot = os.environ.get("INNOPTEM_BASE_DEPOT", os.environ.get("JULIA_DEPOT_PATH", f"/local/tmp/{getpass.getuser()}/.julia"))
     donor_depot = (args.donor_depot or Path(depot.split(os.pathsep)[0])).expanduser().resolve()
     receiver_depot = (args.receiver_depot or donor_depot.with_name(donor_depot.name + "-tal2")).expanduser().resolve()
     if donor_depot == receiver_depot:
@@ -140,10 +136,9 @@ def main():
     revision = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, capture_output=True)
     manifest = dict(case=str(case), settings=str(settings), threads=args.threads,
                     time_limit=args.time_limit, roles=roles, julia=julia,
-                    helper=args.helper, main_tal=args.main_tal, score=args.score if args.helper.startswith("rscots") else None,
-                    switchable=args.switchable if args.helper.startswith("rscots") else None,
+                    helper=args.helper, main_tal=args.main_tal, score=args.score if args.helper == "rscots" else None,
+                    switchable=args.switchable if args.helper == "rscots" else None,
                     main_warmstart=False if args.helper != "tal1" else None,
-                    stop_helper_with_main=args.stop_helper_with_main,
                     hostname=os.uname().nodename, start_epoch=time.time(),
                     startup_timeout=args.startup_timeout,
                     donor_depot=str(donor_depot), receiver_depot=str(receiver_depot),
@@ -187,7 +182,6 @@ def main():
                        INNOPTEM_EXCHANGE_MAIN_TAL=str(args.main_tal),
                        INNOPTEM_EXCHANGE_SCORE=args.score,
                        INNOPTEM_EXCHANGE_SWITCHABLE=str(args.switchable),
-                       INNOPTEM_EXCHANGE_STOP_WITH_MAIN="1" if args.stop_helper_with_main else "0",
                        INNOPTEM_EXCHANGE_AUDIT="1" if args.audit_models else "0",
                        JULIA_DEPOT_PATH=(f"{donor_depot}:{fallback_depot}:" if role == "donor"
                                          else f"{receiver_depot}:{donor_depot}:{fallback_depot}:"),
@@ -236,9 +230,6 @@ def main():
             raise RuntimeError("Main worker failed; inspect worker.log")
         manifest["main_complete"] = True
         manifest["complete"] = manifest["returncodes"][0] == 0
-        stopped = output / "donor" / "helper-stopped.json"
-        if stopped.exists():
-            manifest["helper_stopped_with_main"] = json.loads(stopped.read_text())
         if not manifest["complete"]:
             manifest["helper_error"] = "Helper failed; main solve completed independently. Inspect donor/worker.log."
     except BaseException as exc:

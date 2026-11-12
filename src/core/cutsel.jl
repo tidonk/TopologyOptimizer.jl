@@ -23,6 +23,10 @@ using Distances
 using StatsBase: sample, quantile
 using Statistics: mean
 
+include("cutsel_dynamic.jl")
+include("cutsel_scip_hybrid.jl")
+include("cutsel_pb.jl")
+
 "extract variable-to-coefficient mapping from a Benders cut constraint."
 function extract_cut_coefficients(con)::Dict{JuMP.VariableRef, Float64}
     coeffs = Dict{JuMP.VariableRef, Float64}()
@@ -50,8 +54,9 @@ function extract_cut_coefficients_vector(cons::Vector, all_vars::Vector{JuMP.Var
     coeff_matrix = zeros(Float64, n_cuts, n_vars)
     
     for (i, con) in enumerate(cons)
-        coeffs = extract_cut_coefficients(con)
-        for (var, coeff) in coeffs
+        # Read the existing unique affine terms without allocating a temporary Dict.
+        terms = con.func isa JuMP.GenericAffExpr ? con.func.terms : ()
+        for (var, coeff) in terms
             if haskey(var_to_idx, var)
                 coeff_matrix[i, var_to_idx[var]] = coeff
             end
@@ -109,6 +114,18 @@ function select_cluster_representatives(clusters::Vector{Int}, violations::Vecto
                                         mode::Symbol=:max_violation,
                                         coeff_matrix::Union{Matrix{Float64}, Nothing}=nothing)::Vector{Int}
     @assert length(clusters) == length(violations) "Clusters and violations must have same length"
+    if mode != :centroid
+        best = Dict{Int, Int}()
+        for i in eachindex(clusters, violations)
+            cid = clusters[i]
+            previous = get(best, cid, 0)
+            # argmax uses isless: keep first ties, including Inf, and preserve NaN ordering.
+            if previous == 0 || isless(violations[previous], violations[i])
+                best[cid] = i
+            end
+        end
+        return sort!(collect(values(best)))
+    end
     if mode == :centroid
         @assert !isnothing(coeff_matrix) "coeff_matrix is required for :centroid mode"
         @assert size(coeff_matrix, 1) == length(clusters) "coeff_matrix rows must match cluster length"
@@ -193,6 +210,19 @@ function get_num_select_cuts(params::Dict{Symbol, Any}, n_cuts::Int, n_total_sps
     end
 
     return n
+end
+
+"Number of clusters under an absolute, scenario, or current-pool budget."
+function get_num_cluster_cuts(params::Dict{Symbol, Any}, n_cuts::Int, n_total_sps::Int)::Int
+    mode = get(params, :NUM_CLUSTERS_MODE, :abs)
+    if mode == :abs
+        return min(n_cuts, get(params, :NUM_CLUSTERS, 5))
+    elseif mode == :rel || mode == :rel_per_iter
+        denominator = mode == :rel ? n_total_sps : n_cuts
+        alpha = get(params, :NUM_CLUSTERS_REL_ALPHA, 0.05)
+        return min(n_cuts, max(1, ceil(Int, alpha * denominator)))
+    end
+    error("Unknown cluster budget mode: $mode")
 end
 
 "select cuts from subproblems based on violation magnitude."
@@ -322,14 +352,7 @@ function _cluster_cuts(cons::Vector{Vector{JuMP.ScalarConstraint}},
         end
     else
         n = length(cons)
-        cluster_mode = get(params, :NUM_CLUSTERS_MODE, :abs)
-        if cluster_mode == :rel
-            alpha = get(params, :NUM_CLUSTERS_REL_ALPHA, 0.05)
-            k = max(1, ceil(Int, alpha * n_total_subproblems))
-            k = min(k, n)
-        else  # :abs
-            k = min(get(params, :NUM_CLUSTERS, 5), n)
-        end
+        k = get_num_cluster_cuts(params, n, n_total_subproblems)
         if k >= n
             clusters = collect(1:n)
         else
@@ -488,15 +511,25 @@ function select_cuts_by_diversity!(subproblem_prio_list::Vector{Dict{Symbol, Any
         return cons, subproblem_ids
     end
 
+    # Singleton clusters select every cut and consume no RNG. Skip coefficient
+    # extraction and distances unless the caller requested a visualization.
+    if isnothing(plot_html) && !get(params, :USE_DBSCAN, true)
+        n = length(cons)
+        k = get_num_cluster_cuts(params, n, length(subproblem_prio_list))
+        if k >= n
+            return cons, subproblem_ids
+        end
+    end
+
     clusters, dist_matrix, coeff_matrix = _cluster_cuts(cons, violations, params=params, n_total_subproblems=length(subproblem_prio_list))
 
     # Select representative from each cluster.
     rep_mode = get(params, :REPRESENTATIVE_MODE, :max_violation)
     representative_indices = select_cluster_representatives(clusters, violations, mode=rep_mode, coeff_matrix=coeff_matrix)
-    chosen = BitVector(i in representative_indices for i in 1:length(cons))
 
     # Write HTML visualization if requested
     if !isnothing(plot_html)
+        chosen = BitVector(i in representative_indices for i in 1:length(cons))
         write_cut_cluster_html(plot_html, dist_matrix, clusters, violations, coeff_matrix, chosen)
     end
     
@@ -625,9 +658,10 @@ function select_cuts_randomly!(subproblem_prio_list::Vector{Dict{Symbol, Any}},
     cuts = Vector{Vector{JuMP.ScalarConstraint}}()
     c_ids_used = Vector{Int64}()
     cuts_mode = get(params, :NUM_CUTS_MODE, :abs)
-    if cuts_mode == :rel
+    if cuts_mode == :rel || cuts_mode == :rel_per_iter
         alpha = get(params, :NUM_CUTS_REL_ALPHA, 0.05)
-        n_cuts = max(1, ceil(Int, alpha * length(subproblem_prio_list)))
+        denominator = cuts_mode == :rel ? length(subproblem_prio_list) : length(cons)
+        n_cuts = max(1, ceil(Int, alpha * denominator))
         n_cuts = min(n_cuts, length(cons))
     else  # :abs
         n_cuts = min(length(cons), get(params, :NUM_CUTS, 5))
@@ -736,6 +770,7 @@ function select_cuts!(data,
                      n_callbacks::Int=0,
                     )::Tuple{Vector{Vector{JuMP.ScalarConstraint}}, Int, Int, Float64}
 
+    physical_violations = violations
     # the prio list is sorted by priority, so look up subproblem entries by contingency id instead of by position
     prio_entry = Dict(entry[:contingency_id] => entry for entry in subproblem_prio_list)
 
@@ -793,7 +828,27 @@ function select_cuts!(data,
         end
 
         if method == :VIOLATION
-            cuts, c_ids_used = select_cuts_by_violation!(subproblem_prio_list, subproblem_ids, cons, violations, cb_data, params=method_params)
+            if method_params[:LIMIT_MODE] == :pb
+                isnothing(cb_data) && error("Primal-bound filtering requires callback data")
+                z_ub, z_mp = Ref{Cdouble}(), Ref{Cdouble}()
+                rc_ub = Gurobi.GRBcbget(cb_data, Gurobi.GRB_CB_MIPSOL, Gurobi.GRB_CB_MIPSOL_OBJBST, z_ub)
+                rc_mp = Gurobi.GRBcbget(cb_data, Gurobi.GRB_CB_MIPSOL, Gurobi.GRB_CB_MIPSOL_OBJ, z_mp)
+                rc_ub == 0 && rc_mp == 0 || error("Could not read callback objective bounds")
+                incumbent = z_ub[] >= 0.5 * Gurobi.GRB_INFINITY ? Inf : z_ub[]
+                is_feasibility = isempty(cut_types) ? falses(length(cons)) : cut_types .== :Feasibility
+                indices = pb_selected_indices(physical_violations, is_feasibility,
+                    sortperm(violations, rev=true), incumbent, z_mp[];
+                    rho=method_params[:LIMIT_PB_RHO])
+                cuts, c_ids_used = cons[indices], subproblem_ids[indices]
+            else
+                cuts, c_ids_used = select_cuts_by_violation!(subproblem_prio_list, subproblem_ids, cons, violations, cb_data, params=method_params)
+            end
+        elseif method == :SCIP_HYBRID
+            cuts, c_ids_used = select_cuts_scip_hybrid!(subproblem_prio_list, subproblem_ids,
+                cons, physical_violations, cb_data, cut_types; params=method_params)
+        elseif method == :SCIP_DYNAMIC
+            cuts, c_ids_used = select_cuts_scip_dynamic!(subproblem_prio_list, subproblem_ids,
+                cons, physical_violations, cb_data, cut_types; params=method_params)
         elseif method == :LODF_DIVERSITY
             cuts, c_ids_used = select_cuts_by_lodf_diversity!(subproblem_prio_list, data[:sp_clusters], subproblem_ids, cons, violations, params=method_params)
         elseif method == :VIOLATION_AGG

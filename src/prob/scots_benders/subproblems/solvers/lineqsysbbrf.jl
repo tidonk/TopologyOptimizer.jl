@@ -349,7 +349,7 @@ function update_dualss_feas!(dualss::Dict{Symbol, Dict{Int, Float64}}, pm_sub::A
     # set χ
     for (branch_id, vad) in betas
         branch = solver.branch_data[branch_id]
-        if branch_id ∉ outage_branches
+        if branch_id ∉ outage_branches 
             if is_branch_switchable(branch)
                 if master_var_vals_branch[branch_id]::Float64 > 0.5
                     if vad < branch[:angmin] - SOLVER_PRECISION
@@ -359,9 +359,9 @@ function update_dualss_feas!(dualss::Dict{Symbol, Dict{Int, Float64}}, pm_sub::A
                     end
                 else
                     if vad < branch[:angmin_close] - SOLVER_PRECISION
-                        dualss[:vad_on_off_lb][branch_id] = solver.duals[end]
+                        dualss[:vad_on_off_lb][branch_id] = -solver.duals[end]
                     else
-                        dualss[:vad_on_off_ub][branch_id] = solver.duals[end]
+                        dualss[:vad_on_off_ub][branch_id] = -solver.duals[end]
                     end
                 end
             else

@@ -3,15 +3,6 @@
 using TopologyOptimizer, JSON, LinearAlgebra
 LinearAlgebra.BLAS.set_num_threads(1)
 
-json_safe(x) = x
-json_safe(x::AbstractFloat) = isfinite(x) ? x : nothing
-json_safe(x::Enum) = string(x)
-json_safe(x::Symbol) = string(x)
-json_safe(x::Type) = string(x)
-json_safe(x::Function) = string(x)
-json_safe(x::AbstractDict) = Dict(string(k) => json_safe(v) for (k, v) in x)
-json_safe(x::AbstractArray) = map(json_safe, x)
-
 casefile, settings, output, role, limit, threads = ARGS
 role in ("donor", "receiver", "control") || error("Invalid worker role")
 mkpath(output)
@@ -28,7 +19,7 @@ open(joinpath(output, "runtime.json"), "w") do io
 end
 helper = get(ENV, "INNOPTEM_EXCHANGE_HELPER", "tal1")
 main_tal = parse(Int, get(ENV, "INNOPTEM_EXCHANGE_MAIN_TAL", "2"))
-tal = role == "donor" ? (helper == "scopf" ? 0 : helper == "rscots-sequential" ? main_tal : 1) : main_tal
+tal = role == "donor" ? (helper == "scopf" ? 0 : 1) : main_tal
 params = Dict{Symbol,Any}(
     :LIMITS => Dict(:BRANCH => Dict(:TAL_TIMESTEP => tal)),
     :SOLVER => Dict(:SOLVING_TIME_LIMIT => parse(Float64, limit),
@@ -37,47 +28,23 @@ params = Dict{Symbol,Any}(
 )
 if helper != "tal1"
     # Main starts immediately; only the RSCOTS helper initializes itself with SCOPF.
-    params[:WARMSTARTING] = Dict(:ENABLED => role == "donor" && helper in ("rscots", "rscots-sequential"),
-        :WARMSTART_METHOD => helper == "rscots-sequential" ? :rscots_sequential : :scopf)
+    params[:WARMSTARTING] = Dict(:ENABLED => role == "donor" && helper == "rscots", :WARMSTART_METHOD => :scopf)
     params[:HEURISTIC_SOLVING] = Dict(:ENABLED => false,
         :RSCOTS => Dict(:N_SW_BR_ABS => parse(Int, get(ENV, "INNOPTEM_EXCHANGE_SWITCHABLE", "16")),
             :SWITCHABLE_BRANCHES_LIMIT_MODE => :abs_num))
 end
-if helper == "rscots-sequential"
-    score = Symbol(get(ENV, "INNOPTEM_EXCHANGE_SCORE", "ADMITTANCE_SECANT"))
-    methods = (:RND, :FULL, :SENS, :CONGPROX, :ETA, :ADMITTANCE_SECANT)
-    score in methods || error("Unsupported score for staged RSCOTS: $score")
-    params[:WARMSTARTING][:RSCOTS] = Dict(
-        :N_SW_BR_ABS => parse(Int, get(ENV, "INNOPTEM_EXCHANGE_SWITCHABLE", "16")),
-        :SWITCHABLE_BRANCHES_LIMIT_MODE => :abs_num,
-        :WEIGHTS => Dict(method => Float64(method == score) for method in methods))
-end
 consts = Dict{Symbol,Any}(:USER_ENVIRONMENT => Dict(:DIRECTORIES => Dict(
     :RESULTS_DIR => output, :LOG_DIR => output, :SOLVER_LOG_DIR => joinpath(output, "logs"))))
-data, result = try
-    TopologyOptimizer.main(casefile; params_file=settings, additional_params=params,
-        additional_consts=consts, busbars=false, timesteps=1, slack_types=[:ratea], plot=false,
-        return_data=true)
-catch error
-    error isa TopologyOptimizer.ParallelHelperFinished || rethrow()
-    open(joinpath(output, "helper-stopped.json"), "w") do io
-        JSON.print(io, json_safe(error.diagnostic), 2)
-    end
-    open(joinpath(output, "resolved-params.json"), "w") do io
-        JSON.print(io, json_safe(TopologyOptimizer.PARAMS), 2)
-    end
-    @info("RSCOTS helper stopped because the main solve finished")
-    exit(0)
-end
-if haskey(data, "admittance_warmstart")
-    result["admittance_warmstart"] = data["admittance_warmstart"]
-end
-if haskey(data, "rscots_stages")
-    result["rscots_stages"] = data["rscots_stages"]
-end
-if haskey(data, "restricted_solver_controls")
-    result["restricted_solver_controls"] = data["restricted_solver_controls"]
-end
+result = TopologyOptimizer.main(casefile; params_file=settings, additional_params=params,
+                      additional_consts=consts, busbars=false, timesteps=1, slack_types=[:ratea], plot=false)
+json_safe(x) = x
+json_safe(x::AbstractFloat) = isfinite(x) ? x : nothing
+json_safe(x::Enum) = string(x)
+json_safe(x::Symbol) = string(x)
+json_safe(x::Type) = string(x)
+json_safe(x::Function) = string(x)
+json_safe(x::AbstractDict) = Dict(string(k) => json_safe(v) for (k, v) in x)
+json_safe(x::AbstractArray) = map(json_safe, x)
 open(joinpath(output, "result.json"), "w") do io
     JSON.print(io, json_safe(result), 2)
 end
