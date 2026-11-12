@@ -209,6 +209,7 @@ end
 
 #### these constraints are kept here for their name
 # Generic thermal limit constraint
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 "`p[f_idx]^2 + q[f_idx]^2 <= rate_a^2`"
 ### Only adds constraint name
 function constraint_thermal_limit_from(pm::AbstractPowerModel, n::Int, f_idx, rate_a)
@@ -218,6 +219,7 @@ function constraint_thermal_limit_from(pm::AbstractPowerModel, n::Int, f_idx, ra
     JuMP.@constraint(pm.model, p_fr^2 + q_fr^2 <= rate_a^2, base_name = "$(n)_rating_from_$(f_idx)")
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 "`p[t_idx]^2 + q[t_idx]^2 <= rate_a^2`"
 function constraint_thermal_limit_to(pm::AbstractPowerModel, n::Int, t_idx, rate_a)
     p_to = var(pm, n, :p, t_idx)
@@ -254,6 +256,7 @@ function constraint_gen_power_slack_on_off(pm::AbstractPowerModel, n::Int, i::In
     end
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 "on/off constraint for generators"
 # TODO: the case that it does not have the key :qg should be handled by calling the constraint with the same name, but in apo.jl
 function constraint_gen_power_on_off(pm::AbstractPowerModel, n::Int, i::Int, pmin, pmax, qmin, qmax)
@@ -286,6 +289,7 @@ function constraint_pg_equal_pgsec(pm::AbstractPowerModel; nw::Int=nw_id_default
     end
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 """
 Creates Line Flow constraint for DC Lines (Matpower Formulation)
 

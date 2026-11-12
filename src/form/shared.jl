@@ -90,6 +90,7 @@ function constraint_power_balance_switching(pm::AbstractPowerModel; nw::Int=nw_i
     JuMP.@constraint(pm.model, sum((gen["pg_0"] + gen["RDP+"]) * (is_gen_switchable(gen) ? z_gen[i] : gen["status"]) for (i, gen) in gens) ≥ pd_sum, base_name="$(nw)_constraint_power_balance_switching_max")
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 """
 ```
 t[f_bus] - t[t_bus] <= angmax
@@ -270,6 +271,7 @@ function constraint_dcline_slack_sec(pm, n::Int, i::Int, arc, c::ContingencyID, 
     JuMP.@constraint(pm.model, p_dc_sec[((l,c),i,j)] >= pmint - p_dc_slack_lower[((l,c),i,j)])
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 "`t[ref_bus] == 0`"
 function constraint_theta_ref(pm::AbstractPolarModels, n::Int, i::Int)
     JuMP.@constraint(pm.model, var(pm, n, :va)[i] == 0, base_name = "$(n)_theta_ref_$(i)")
@@ -510,6 +512,7 @@ function constraint_gen_power_change_on_off(pm::AbstractPowerModel, nw::Int, i::
     JuMP.@constraint(pm.model, pg_delta_plus  <= pg_delta_plus_limit  * pg_delta_on_off, base_name = "$(nw)_pg_delta_plus_on_off_linking_$(i)")
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 ""
 function constraint_power_balance(pm::AbstractWModels, n::Int, i, bus_arcs, bus_arcs_dc, bus_arcs_sw, bus_gens, bus_storage, bus_pd, bus_qd, bus_gs, bus_bs)
     w    = var(pm, n, :w, i)

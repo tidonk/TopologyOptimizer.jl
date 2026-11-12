@@ -16,69 +16,6 @@
 #                                                                           #
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-"one angle reference per component of the physical PF matrix, including isolated buses"
-function pf_component_references(A::SparseArrays.SparseMatrixCSC; components=nothing)
-    # Optionally record component labels for aligning off-branch angles.
-    visited = falses(size(A, 1))
-    references = Int64[]
-    pending = Int64[]
-    for root in eachindex(visited)
-        visited[root] && continue
-        push!(references, root)
-        visited[root] = true
-        isnothing(components) || (components[root] = length(references))
-        push!(pending, root)
-        while !isempty(pending)
-            column = pop!(pending)
-            for entry in nzrange(A, column)
-                row = A.rowval[entry]
-                # Sparse branch updates retain stored zeros; those are not edges.
-                if !iszero(A.nzval[entry]) && !visited[row]
-                    visited[row] = true
-                    isnothing(components) || (components[row] = length(references))
-                    push!(pending, row)
-                end
-            end
-        end
-    end
-    return references
-end
-
-"finds offsets satisfying x[to] - x[from] <= bound, or nothing for inconsistent bounds"
-function feasible_component_offsets(n::Int, bounds::Vector{Tuple{Int, Int, Float64}})
-    offsets = zeros(n)
-    # Bellman-Ford with an implicit zero-cost source to every component.
-    for _ in 1:n
-        changed = false
-        for (from, to, bound) in bounds
-            candidate = offsets[from] + bound
-            if candidate < offsets[to]
-                offsets[to] = candidate
-                changed = true
-            end
-        end
-        !changed && return offsets
-    end
-    # A negative cycle means no simultaneous choice of component angles exists.
-    return nothing
-end
-
-"grounds every component without modifying the physical matrix used for residual checks"
-function grounded_pf_matrix(A::SparseArrays.SparseMatrixCSC{Float64, Int64}, references=pf_component_references(A))
-    grounded = copy(A)
-    for reference in references
-        grounded[reference, reference] += max(abs(A[reference, reference]), 1.0)
-    end
-    return grounded
-end
-
-"checks linear solve residuals"
-function valid_pf_linear_solution(A, x, rhs)
-    all(isfinite, x) || return false
-    # allow injection imbalance up to solver precision
-    return norm(A * x - rhs, Inf) <= max(SOLVER_PRECISION, 1e-10 * norm(rhs, Inf))
-end
-
 "checks whether the matrix has an empty column"
 function _is_matrix_connected(A::SparseArrays.SparseMatrixCSC)::Bool
     @inbounds for i in 1:size(A, 2)
@@ -177,10 +114,11 @@ function recursive_lu_update!(L::SparseArrays.SparseMatrixCSC{Float64, Int64}, U
         for j in (i+1):m
             ## find L_ji
             # go until we found the row or we are out of the col range
-            while L_id < L.colptr[i+1] && L.rowval[L_id] < j
+            rowval = L.rowval[L_id]
+            while rowval < j && L_id < L.colptr[i+1]
                 L_id += 1
+                rowval = L.rowval[L_id]
             end
-            rowval = L_id < L.colptr[i+1] ? L.rowval[L_id] : 0
 
             # if we are later in the same col, or in a later col, the entry is not 0.0 -> try to add the entry
             if rowval ≠ j

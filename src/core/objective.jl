@@ -103,28 +103,6 @@ function objective_min_change(pm::AbstractPowerModel; nw::Int=nw_id_default, kwa
     )
 end
 
-"minimize deviation of generator active power from initial solution (pg_start)"
-function objective_min_gen_change(pm::AbstractPowerModel; nw::Int=nw_id_default, kwargs...)
-    nw = 1
-    pg_dev = var(pm, nw)[:pg_dev] = JuMP.@variable(pm.model,
-        [i in ids(pm, nw, :gen)], base_name="$(nw)_pg_dev",
-        lower_bound = 0.0
-    )
-
-    for (i, gen) in ref(pm, nw, :gen)
-        pg_i = var(pm, nw, :pg, i)
-        pg_start = gen["pg_start"]
-        JuMP.@constraint(pm.model,  pg_i - pg_start <= pg_dev[i])
-        JuMP.@constraint(pm.model,  pg_start - pg_i <= pg_dev[i])
-    end
-
-    return JuMP.@objective(pm.model, Min,
-        sum(
-            sum(var(pm, n, :pg_dev, i) for (i, gen) in nw_ref[:gen])
-        for (n, nw_ref) in nws(pm))
-    )
-end
-
 "for each gen, our costs are equal to `pg * cost_produce` + `(pg_delta_plus + pg_delta_minus) * cost_change"
 function _expr_min_redispatch_cost(pm::AbstractPowerModel)
     return JuMP.@expression(pm.model,
@@ -196,6 +174,7 @@ function get_slack_var_symbols(pm::AbstractPowerModel, slack_types::Vector{Symbo
                           :ratea                     ∈ slack_types ? [                           :rate_a_slack    ] : [],
                           :ratea ∈ slack_types && !PARAMS[:CONTINGENCIES][:SLACK_EQUALS_SEC_SLACK] && haskey(var(pm,[n for (n, _) in nws(pm)][1]), :rate_a_slack_sec) ? [:rate_a_slack_sec] : [], # the key does not exist in Benders mode
                           :vad                       ∈ slack_types ? [:vad_slack_lower,          :vad_slack_upper ] : [],
+                          :pg_delta_percentage       ∈ slack_types ? [:pg_delta_percentage_slack                  ] : [],
                           :pd                        ∈ slack_types ? [:pd_slack_upper, :pd_slack_lower            ] : [])
     if typeof(pm) <: AbstractACPModel
                   append!(var_symbols,

@@ -49,14 +49,14 @@
         DEFAULT_SLACK_TYPES                     = [":pg", ":ratea", ":dclinepf", ":vad"] # ":vm" is also possible, but not recommended
 
         # dictionary of slack variables used for different network components
-        RESULT_ARRAY_SLACK_VARIABLE_NAME_MAP    = {"ratea" = ["raf_s", "rat_s"], "vad" = ["vadf_su", "vadt_su", "vadf_sl", "vadt_sl"], "pg" = ["pmin_slack", "pmax_slack"], "qg" = ["qmin_slack", "qmax_slack"], "dclinepf" = ["p_dc_slack_lower", "p_dc_slack_upper"], "vm" = ["vm_slack_lower", "vm_slack_upper"], "pd" = ["pd_slack_lower", "pd_slack_upper"], "qd" = ["qd_slack_lower", "qd_slack_upper"]}
+        RESULT_ARRAY_SLACK_VARIABLE_NAME_MAP    = {"ratea" = ["raf_s", "rat_s"], "vad" = ["vadf_su", "vadt_su", "vadf_sl", "vadt_sl"], "pg" = ["pmin_slack", "pmax_slack"], "qg" = ["qmin_slack", "qmax_slack"], "pg_delta_percentage" = ["pg_delta_percentage_slack"], "dclinepf" = ["p_dc_slack_lower", "p_dc_slack_upper"], "vm" = ["vm_slack_lower", "vm_slack_upper"], "pd" = ["pd_slack_lower", "pd_slack_upper"], "qd" = ["qd_slack_lower", "qd_slack_upper"]}
 
-        SLACK_VARIABLE_INTERNAL_NAME_MAP        = {"ratea" = [":rate_a_slack", ":rate_a_slack_sec"], "vad" = [":vad_slack_lower", ":vad_slack_upper"], "pg" = [":pmin_slack", ":pmax_slack"], "qg" = [":qmin_slack", ":qmax_slack"], "dclinepf" = [":p_dc_slack_lower", ":p_dc_slack_upper"], "vm" = [":vm_slack_lower", ":vm_slack_upper"], "pd" = [":pd_slack_lower", ":pd_slack_upper"], "qd" = [":qd_slack_lower", ":qd_slack_upper"]}
+        SLACK_VARIABLE_INTERNAL_NAME_MAP        = {"ratea" = [":rate_a_slack", ":rate_a_slack_sec"], "vad" = [":vad_slack_lower", ":vad_slack_upper"], "pg" = [":pmin_slack", ":pmax_slack"], "qg" = [":qmin_slack", ":qmax_slack"], "pg_delta_percentage" = [":pg_delta_percentage_slack"], "dclinepf" = [":p_dc_slack_lower", ":p_dc_slack_upper"], "vm" = [":vm_slack_lower", ":vm_slack_upper"], "pd" = [":pd_slack_lower", ":pd_slack_upper"], "qd" = [":qd_slack_lower", ":qd_slack_upper"]}
 
-        SLACK_COMPONENT_TYPE                    = {"pg" = ":gen", "qg" = ":gen", "ratea" = ":branch", "dclinepf" = ":dcline", "vad" = ":branch", "vm" = ":bus", "pd" = ":load", "qd" = ":load"}
+        SLACK_COMPONENT_TYPE                    = {"pg" = ":gen", "qg" = ":gen", "ratea" = ":branch", "dclinepf" = ":dcline", "vad" = ":branch", "vm" = ":bus", "pg_delta_percentage" = ":gen", "pd" = ":load", "qd" = ":load"}
 
         # slack_variable => (<add to/subtract from>, <network parameter>)
-        SLACK_VARIABLE_CALC_MAP                 = {"pmin_slack" = '((-),"pmin")', "pmax_slack" = '((+),"pmax")', "qmin_slack" = '((-),"qmin")', "qmax_slack" = '((+),"qmax")', "raf_s" = '((+),"rate_a")', "rat_s" = '((+),"rate_a")', "vadf_sl" = '((-),"angmin")', "vadf_su" = '((+),"angmax")', "vadt_sl" = '((-),"angmin")', "vadt_su" = '((+),"angmax")', "vm_slack_lower" = '((-),"vm")', "vm_slack_upper" = '((+),"vm")', "pd_slack_lower"  = '((-), "pd")', "pd_slack_upper" = '((+), "pd")'}
+        SLACK_VARIABLE_CALC_MAP                 = {"pmin_slack" = '((-),"pmin")', "pmax_slack" = '((+),"pmax")', "qmin_slack" = '((-),"qmin")', "qmax_slack" = '((+),"qmax")', "raf_s" = '((+),"rate_a")', "rat_s" = '((+),"rate_a")', "vadf_sl" = '((-),"angmin")', "vadf_su" = '((+),"angmax")', "vadt_sl" = '((-),"angmin")', "vadt_su" = '((+),"angmax")', "vm_slack_lower" = '((-),"vm")', "vm_slack_upper" = '((+),"vm")', "pg_delta_percentage_slack" = '((+), "pg_delta_percentage")', "pd_slack_lower"  = '((-), "pd")', "pd_slack_upper" = '((+), "pd")'}
 
         SOLVER_NAME_MAP                         = {"FullLPSolver" = " FLP", "LinEqSysSolver" = "  LQ", "LinEqSysBBSolver" = " LQB", "LPSolver" = "  LP", "LinEqSysRfSolver" = " LQR", "LinEqSysBBRfSolver" = " LQBR"}
 

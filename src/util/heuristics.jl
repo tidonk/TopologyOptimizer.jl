@@ -24,7 +24,7 @@ function compute_PTDF(data)#, br_ids::Vector{Int64} = collect(keys(data["branch"
     branch_count = length(data["branch"])
     
     # Identify the reference bus
-    slack_bus = parse(Int64, findfirst(bus -> bus["bus_type"] == 3, data["bus"]))
+    slack_bus = parse(Int64, findfirst(bus -> bus["bus_type"] == 3, data["bus"])[1])
     
     # Initialize B' matrix
     B_prime = zeros(bus_count, bus_count)
@@ -77,7 +77,6 @@ end
 
 "computes one entry of the LODF matrix"
 function compute_LODF(PTDF, branch_data_of_i::Dict, i::Int, j::Int)
-    i == j && return -1.0
     # Calculate LODF based on PTDF
     from_bus_i = branch_data_of_i["f_bus"]
     to_bus_i = branch_data_of_i["t_bus"]
@@ -103,11 +102,6 @@ function compute_LODF(PTDF, data)
     
     return LODF
 end
-function compute_LODF(data)
-    PTDF = compute_PTDF(data)
-    
-    return compute_LODF(PTDF, data)
-end
 
 "get all branches that are at most n_hops (buses) away. Exclude the branch itself"
 function get_neighborhood_branches(nw_data, branch, n_hops)::Vector{Int64}
@@ -128,40 +122,12 @@ end
 
 
 ### Score Calculation ###
-"normalizes the scores between 0 and weight, also removes NaN entries"
-function normalize_scores_with_weight!(scores::Dict{Int64, Float64}, weight::Float64)
-    # replace NaN
-    n_nan = 0
-    for (k, v) in scores
-        if isnan(v)
-            scores[k] = 0.0
-
-            n_nan += 1
-        end
-    end
-
-    if n_nan > 20
-        @warn("$n_nan NaNs during branch score calculation.")
-    end
-
-    isempty(scores) && return scores
-    max_val = maximum(values(scores))
-    max_val == 0.0 && return scores
-    
-    # normalize
-    for (branch_id, val) in scores
-        scores[branch_id] = val / max_val * weight
-    end
-
-    return scores
-end
-
 "Assign random switching relevance scores to each switchable branch in the network."
-function calc_br_sw_heur_scores_rnd(nw_data; only_switchable::Bool=true, kwargs...)::Dict{Int64, Float64}
+function calc_br_sw_heur_scores_rnd(nw_data; kwargs...)::Dict{Int64, Float64}
     br_sw_heur_scores = Dict{Int64, Float64}()
 
     for (_, branch) in nw_data["branch"]
-        if !only_switchable || is_branch_switchable(branch)
+        if branch["switchable"]
             br_sw_heur_scores[branch["index"]] = rand()
         end
     end
@@ -169,11 +135,11 @@ function calc_br_sw_heur_scores_rnd(nw_data; only_switchable::Bool=true, kwargs.
 end
 
 "Assign the same switching relevance scores to each switchable branch in the network."
-function calc_br_sw_heur_scores_full(nw_data; only_switchable::Bool=true, kwargs...)::Dict{Int64, Float64}
+function calc_br_sw_heur_scores_full(nw_data; kwargs...)::Dict{Int64, Float64}
     br_sw_heur_scores = Dict{Int64, Float64}()
 
     for (_, branch) in nw_data["branch"]
-        if !only_switchable || is_branch_switchable(branch)
+        if branch["switchable"]
             br_sw_heur_scores[branch["index"]] = 1.0
         end
     end
@@ -191,115 +157,99 @@ function collect_pfs(nw_data, nw_sol; contingency_id::Int64=-1)::Dict{Int64, Flo
 end
 
 "
-    calc_br_sw_heur_scores_sens(nw_data; nw_sol::Dict{String, Any}=Dict(), SENS_LOAD_LIMIT::Float64=0.6)::Dict{Int64, Float64}
+    calc_br_sw_heur_scores_sens(nw_data; nw_sol::Dict{String, Any}=Dict(), LOAD_LIMIT::Float64=0.6)::Dict{Int64, Float64}
 
 Assign switching relevance scores to each switchable branch in the network based on the sensitivity heuristic (Liu et al., 2012). 
 
 ## Input
 - `nw_data` -- the network data dictionary
-- `only_switchable` -- consider only switchable branches
 - `nw_sol` -- the network solution dictionary
-- `SENS_LOAD_LIMIT` -- the line loading at which a branch is considered congested
+- `LOAD_LIMIT` -- the line loading at which a branch is considered congested
 "
-function calc_br_sw_heur_scores_sens(nw_data; only_switchable::Bool=true, nw_sol::Dict{String, Any}=Dict(), SENS_LOAD_LIMIT=0.9, SENS_N_MIN_CONGESTED_BRANCHES::Int64=PARAMS[:WARMSTARTING][:RSCOTS][:HEUR][:SENS_N_MIN_CONGESTED_BRANCHES], kwargs...)::Dict{Int64, Float64}
+function calc_br_sw_heur_scores_sens(nw_data; nw_sol::Dict{String, Any}=Dict(), LOAD_LIMIT=0.9, N_MIN_CONGESTED_BRANCHES::Int64=PARAMS[:WARMSTARTING][:RSCOTS][:HEUR][:SENS][:N_MIN_CONGESTED_BRANCHES])::Dict{Int64, Float64}
     @assert(! haskey(nw_data["branch"]["1"], "pf_new"), "Data was overwritten by the solution. Provide the original data.")
     @assert(haskey(nw_sol, "branch"), "Solution empty or does not contain branch power flows")
-    @assert(SENS_LOAD_LIMIT > 0.0, "Load limit must be greater than 0")
+    @assert(LOAD_LIMIT > 0.0, "Load limit must be greater than 0")
     #@assert(! nw_data["BUSBARS"], "BUSBARS not yet supported.") # TODO: to support them, simply deactivate switchability, do `merge_buses()`, all low-impedance branches will have been merged, run score, map back to original branches
 
     # calc PTDF and LODF 
-    PTDF = zeros(1,1)
-    try
-        PTDF = compute_PTDF(nw_data)
-    catch e
-        @warn("Error $e while calculating sensitivities.")
-
-        # recover by setting all scores to 0
-        br_sw_heur_scores = Dict{Int64, Float64}()
-        for (_, branch) in nw_data["branch"]
-            if !only_switchable || is_branch_switchable(branch)
-                br_sw_heur_scores[branch["index"]]  = 0
-            end
-        end
-
-        return br_sw_heur_scores
-    end
-
+    PTDF = compute_PTDF(nw_data)
     @assert(! any(isnan.(PTDF)), "PTDF matrix contains $(sum(isnan.(PTDF))) NaN values")
         
     # collect power flow and branch indices of overloaded branches
     pfs = collect_pfs(nw_data, nw_sol)
-    congested_branches_idxs = [branch["index"] for (_, branch) ∈ nw_data["branch"] if is_branch_monitored(branch) && (abs(pfs[branch["index"]]) > SENS_LOAD_LIMIT * get_adjusted_rate_a(nw_data, branch))]
-    @info("Number of (nearly) overloaded branches with load limit $SENS_LOAD_LIMIT: $(length(congested_branches_idxs))")
+    congested_branches_idxs = [branch["index"] for (_, branch) ∈ nw_data["branch"] if is_branch_monitored(branch) && (pfs[branch["index"]] > LOAD_LIMIT * get_adjusted_rate_a(nw_data, branch))]
+    @info("Number of (nearly) overloaded branches with load limit $LOAD_LIMIT: $(length(congested_branches_idxs))")
 
-    # if too few branches are congested, set congested_branches_idxs to the SENS_N_MIN_CONGESTED_BRANCHES branch ids
-    if length(congested_branches_idxs) < SENS_N_MIN_CONGESTED_BRANCHES
-        @warn("No branches are congested. Using the $SENS_N_MIN_CONGESTED_BRANCHES most loaded branches instead.")
+    # if too few branches are congested, set congested_branches_idxs to the N_MIN_CONGESTED_BRANCHES branch ids
+    if length(congested_branches_idxs) < N_MIN_CONGESTED_BRANCHES
+        @warn("No branches are congested. Using the $N_MIN_CONGESTED_BRANCHES most loaded branches instead.")
         sorted_branches_idxs = sort(collect(keys(pfs)), by = x -> abs(pfs[x]), rev = true)
-        congested_branches_idxs = [idx for idx in sorted_branches_idxs[1:min(SENS_N_MIN_CONGESTED_BRANCHES, length(sorted_branches_idxs))]]
+        congested_branches_idxs = [idx for idx in sorted_branches_idxs[1:min(N_MIN_CONGESTED_BRANCHES, length(sorted_branches_idxs))]]
     end
     @info("Number of (nearly) overloaded branches after check: $(length(congested_branches_idxs))")
 
     # calculate sensitivities
     br_sw_heur_scores = Dict{Int64, Float64}()
     for (_, branch) in nw_data["branch"]
-        if !only_switchable || is_branch_switchable(branch)
+        if branch["switchable"]
             k  = branch["index"]
-            # Opening k changes the flow on b by LODF[k,b] * pfs[k].
-            # Compare flow magnitudes after adding this signed change.
-            # The outage formula is undefined for a bridge and does not
-            # describe closing an initially open branch.
-            if branch["status"] == 0 || abs(1 - PTDF[k, branch["f_bus"]] + PTDF[k, branch["t_bus"]]) < 1e-10
-                br_sw_heur_scores[k] = 0.0
-                continue
-            end
-            s  = minimum([(abs(pfs[b] + pfs[k] * compute_LODF(PTDF, branch, k, b)) - abs(pfs[b])) / abs(pfs[b]) for b ∈ congested_branches_idxs if pfs[b] != 0], init = 0.0)
+            s  = minimum([(abs((pfs[k] * compute_LODF(PTDF, nw_data["branch"][string(b)], b, k)) + pfs[b]) - abs(pfs[b])) / abs(pfs[b]) for b ∈ congested_branches_idxs if pfs[b] != 0], init = 0.0)
             br_sw_heur_scores[branch["index"]]  = -s # turn around the sign, since we want higher scores for branches with large, negative sensitivity
         end
     end
+
+    # print table with branch names and scores
+    # @info("Branch sensitivities:")
+    # for (branch_idx, score) in sort(collect(br_sw_heur_scores), by = x -> x[2])
+    #    branch = nw_data["branch"][string(branch_idx)]
+    #    @printf("  %-36s (%4d): %-8.3f\n", branch["branch_name_intern"], branch_idx, score)
+    # end
+
+    # show distribution of scores, binned into 0.1 intervals, sort and show
+    score_distribution = Dict{Float64, Int64}(reverse(sort(collect(countmap(round.(values(br_sw_heur_scores), digits=1))))))
+    @info("Distribution of scores: $(join(["$(k): $(v)" for (k, v) in sort(collect(score_distribution), by = x -> x[1])], ", "))")
 
     return br_sw_heur_scores
 end
 
 "
-    calc_br_sw_heur_scores_congprox(nw_data; nw_sol::Dict{String, Any}=Dict(), CONGPROX_LOAD_LIMIT::Float64=0.6, CONGPROX_N_HOPS::Int64=2)::Dict{Int64, Float64}
+    calc_br_sw_heur_scores_congprox(nw_data; nw_sol::Dict{String, Any}=Dict(), LOAD_LIMIT::Float64=0.6, N_HOPS::Int64=2)::Dict{Int64, Float64}
 
 Assign switching relevance scores to each branch in the network based on the congestion proximity heuristic.
-Congested branches get 1.0, branches that are at most `CONGPROX_N_HOPS` away get 1/hop_dist, all others get 0.
+Congested branches get 1.0, branches that are at most `N_HOPS` away get 1/hop_dist, all others get 0.
 
 ## Input
 - `nw_data` -- the network data dictionary
-- `only_switchable` -- consider only switchable branches
 - `nw_sol` -- the network solution dictionary
-- `CONGPROX_LOAD_LIMIT` -- the line loading at which a branch is considered congested
-- `CONGPROX_N_HOPS` -- the number of hops until a branch is assigned a non-zero score
+- `LOAD_LIMIT` -- the line loading at which a branch is considered congested
+- `N_HOPS` -- the number of hops until a branch is assigned a non-zero score
 "
-function calc_br_sw_heur_scores_congprox(nw_data::Dict{String, Any};
-                                         only_switchable::Bool=true,
+function calc_br_sw_heur_scores_congprox(nw_data::Dict{String, Any}; 
                                          nw_sol::Dict{String, Any}=Dict(), 
-                                         CONGPROX_LOAD_LIMIT::Float64=0.8, 
-                                         CONGPROX_N_HOPS::Int64=2,
+                                         LOAD_LIMIT::Float64=0.8, 
+                                         N_HOPS::Int64=2,
                                          kwargs...)::Dict{Int64, Float64}
     @assert(! haskey(nw_data["branch"]["1"], "pf_new"), "Data was overwritten by the solution. Provide the original data.")
     @assert(haskey(nw_sol, "branch"), "Solution empty or does not contain branch power flows")
-    @assert(CONGPROX_LOAD_LIMIT > 0.0, "Load limit must be greater than 0")
+    @assert(LOAD_LIMIT > 0.0, "Load limit must be greater than 0")
     
     br_sw_heur_scores = Dict{Int64, Float64}()
     
     # set congested branches to switchable
-    congested_branches::Vector{Dict} = [branch for (b_id, branch) in nw_data["branch"] if is_branch_monitored(branch) && abs(nw_sol["branch"][b_id]["pf"]) > get_adjusted_rate_a(nw_data, branch) * CONGPROX_LOAD_LIMIT]
+    congested_branches::Vector{Dict} = [branch for (b_id, branch) in nw_data["branch"] if is_branch_monitored(branch) && abs(nw_sol["branch"][b_id]["pf"]) > get_adjusted_rate_a(nw_data, branch) * LOAD_LIMIT]
     @info("Number of (nearly) overloaded branches: $(length(congested_branches))")
 
     # initialize scores for each switchable branch to 0.0
     for (_, branch) in nw_data["branch"]
-        if !only_switchable || is_branch_switchable(branch)
+        if branch["switchable"]
             br_sw_heur_scores[branch["index"]] = 0.0
         end
     end
 
-    # for each congested branch and all branches that are at most `CONGPROX_N_HOPS` away, set score to 1/(1+hopdist)
+    # for each congested branch and all branches that are at most `N_HOPS` away, set score to 1/(1+hopdist)
     for branch in congested_branches
-        for hop_dist in 1:CONGPROX_N_HOPS
+        for hop_dist in 1:N_HOPS
             br_idxs = get_neighborhood_branches(nw_data, branch, hop_dist)
             for br_idx in br_idxs
                 if is_branch_switchable(nw_data["branch"][string(br_idx)])
@@ -317,47 +267,6 @@ function calc_br_sw_heur_scores_congprox(nw_data::Dict{String, Any};
     return br_sw_heur_scores
 end
 
-"
-    calc_br_sw_heur_scores_eta(nw_data; nw_sol::Dict{String, Any}=Dict())::Dict{Int64, Float64}
-
-Assign switching relevance scores to each branch in the network based on the total eta (= SP objective function) value of contingencies containing it.
-Scores are normalized such that the highest value is 1.0.
-
-## Input
-- `nw_data` -- the network data dictionary
-- `only_switchable` -- consider only switchable branches
-- `nw_sol` -- the network solution dictionary
-"
-function calc_br_sw_heur_scores_eta(nw_data::Dict{String, Any};
-                                         only_switchable::Bool=true,
-                                         nw_sol::Dict{String, Any}=Dict(),
-                                         kwargs...)::Dict{Int64, Float64}
-    @assert(! haskey(nw_data["branch"]["1"], "pf_new"), "Data was overwritten by the solution. Provide the original data.")
-    @assert(haskey(nw_sol, "branch"), "Solution empty or does not contain branch power flows")
-    
-    br_sw_heur_scores = Dict{Int64, Float64}()
-
-    # initialize scores for each switchable branch to 0.0
-    for (_, branch) in nw_data["branch"]
-        br_sw_heur_scores[branch["index"]] = 0.0
-    end
-
-    # for each contingency
-    for (c_id, contingency) in enumerate(nw_data["contingencies"])
-        eta = nw_sol["eta"]["$c_id"]["η"]
-        
-        if eta > 0
-            for branch_id in contingency[:branch]
-                if !only_switchable || is_branch_switchable(nw_data["branch"]["$branch_id"])
-                    br_sw_heur_scores[branch_id] += eta
-                end
-            end
-        end
-    end
-
-    return br_sw_heur_scores
-end
-
 
 ### Score Calculation Wrappers ###
 "
@@ -372,43 +281,39 @@ Calculate branch switching relevance scores based on the selected heuristic.
     - `full`: each branch gets the same score of
     - `sens`: assign a score based on the sensitivity of the branch
     - `congprox`: assign a score based on the proximity to congested branches
-    - `eta`: the score is the sum of the objective values of the corresponding contingencies
 - `nw` -- the network index to calculate the scores for
 - `kwargs` -- additional keyword arguments to pass to the heuristic calculation function. Should usually contain nw_sol, since most reasonable heuristics require it
 
 ## Output
 - a dictionary with branch indices as keys and the assigned scores as values. Scores are in the range [0, 1].
 "
-function calc_br_sw_heur_scores(nw_data::Dict{String, Any}, weights::Dict; only_switchable::Bool=true, kwargs...)::Dict{Int64, Float64}
-    # initialize scores for each switchable branch to 0.0
-    br_sw_heur_scores = Dict{Int64, Float64}()
-    for (_, branch) in nw_data["branch"]
-        if !only_switchable || is_branch_switchable(branch)
-            br_sw_heur_scores[branch["index"]] = 0.0
-        end
+function calc_br_sw_heur_scores(nw_data::Dict{String, Any}; heuristic::Symbol=:CONGPROX, kwargs...)::Dict{Int64, Float64}
+    if heuristic == :RND
+        br_sw_heur_scores = calc_br_sw_heur_scores_rnd(nw_data; kwargs...)
+    elseif heuristic == :FULL
+        br_sw_heur_scores = calc_br_sw_heur_scores_full(nw_data; kwargs...)
+    elseif heuristic == :SENS
+        br_sw_heur_scores = calc_br_sw_heur_scores_sens(nw_data; kwargs...)
+    elseif heuristic == :CONGPROX
+        br_sw_heur_scores = calc_br_sw_heur_scores_congprox(nw_data; kwargs...)
+    else
+        @error("Unknown heuristic: $heuristic")
     end
 
-    if weights[:RND] > 0
-        mergewith!(+, br_sw_heur_scores, normalize_scores_with_weight!(calc_br_sw_heur_scores_rnd(     nw_data; only_switchable=only_switchable, kwargs...), weights[:RND]))
-    end
-    if weights[:FULL] > 0
-        mergewith!(+, br_sw_heur_scores, normalize_scores_with_weight!(calc_br_sw_heur_scores_full(    nw_data; only_switchable=only_switchable, kwargs...), weights[:FULL]))
-    end
-    if weights[:SENS] > 0
-        mergewith!(+, br_sw_heur_scores, normalize_scores_with_weight!(calc_br_sw_heur_scores_sens(    nw_data; only_switchable=only_switchable, kwargs...), weights[:SENS]))
-    end
-    if weights[:CONGPROX] > 0
-        mergewith!(+, br_sw_heur_scores, normalize_scores_with_weight!(calc_br_sw_heur_scores_congprox(nw_data; only_switchable=only_switchable, kwargs...), weights[:CONGPROX]))
-    end
-    if get(weights, :ADMITTANCE_SECANT, 0.0) > 0
-        scores = calc_br_sw_heur_scores_admittance_secant(nw_data; only_switchable=only_switchable, kwargs...)
-        scale = maximum(abs, values(scores); init=0.0)
-        if scale > 0.0
-            mergewith!(+, br_sw_heur_scores, Dict(i => v / scale * weights[:ADMITTANCE_SECANT] for (i, v) in scores))
+    # check scores
+    n_replaced = 0
+    for (k, v) in br_sw_heur_scores
+        if isnan(v)
+            br_sw_heur_scores[k] = 0.0
+            n_replaced += 1
         end
     end
-    if weights[:ETA] > 0
-        mergewith!(+, br_sw_heur_scores, normalize_scores_with_weight!(calc_br_sw_heur_scores_eta(     nw_data; only_switchable=only_switchable, kwargs...), weights[:ETA]))
+    if n_replaced > 0
+        @info("Replaced $n_replaced NaNs by 0 ($(round(n_replaced / length(br_sw_heur_scores) * 100, digits=2))%)")
+        if n_replaced / length(br_sw_heur_scores) > 0.2
+            @warn("NaN ratio too high (> 20%), running again with congprox heuristic.")
+            br_sw_heur_scores = calc_br_sw_heur_scores_congprox(nw_data; kwargs..., PARAMS[:WARMSTARTING][:RSCOTS][:HEUR][:CONGPROX]...)
+        end
     end
 
     return br_sw_heur_scores
@@ -433,16 +338,13 @@ Calculate and set branch switching relevance scores based on the selected heuris
 "
 function calc_and_set_br_sw_heur_scores!(nw_data; 
                                          set_switchability::Bool=true, 
-                                         only_switchable::Bool=true,
                                          params::Dict{Symbol, Any},
                                          heur_params::Dict{Symbol, Any},
                                          kwargs...)
 
-    heur_weights = params[:WEIGHTS]
-    branch_switching_scores::Dict{Int64, Float64} = calc_br_sw_heur_scores(nw_data, heur_weights; only_switchable=only_switchable, heur_params..., kwargs...)
+    heuristic = params[:BR_SW_HEUR]
+    branch_switching_scores::Dict{Int64, Float64} = calc_br_sw_heur_scores(nw_data; heuristic=heuristic, heur_params..., kwargs...)
     
-    isempty(branch_switching_scores) && return
-
     if set_switchability
         percentile = params[:N_SW_BR_REL]
         force_percentile = params[:N_SW_BR_FORCE]
@@ -451,7 +353,6 @@ function calc_and_set_br_sw_heur_scores!(nw_data;
         br_sw_heur_score_values::Vector{Float64} = sort(collect(values(branch_switching_scores)))
 
         if cutoff_mode == :abs_num
-            @assert params[:N_SW_BR_ABS] > 0 "The absolute branch budget must be positive"
             br_sw_heur_score_cutoff = br_sw_heur_score_values[max(1, length(br_sw_heur_score_values) - params[:N_SW_BR_ABS] + 1)]
         elseif cutoff_mode == :abs_score
             br_sw_heur_score_cutoff = params[:SW_BR_ABS_SCORE_LIM]
@@ -462,7 +363,7 @@ function calc_and_set_br_sw_heur_scores!(nw_data;
         end
 
         # if mode is :FULL, set score cutoff to -10000 to make sure all branches are switchable
-        if heur_weights[:FULL] > 0
+        if heuristic == :FULL
             br_sw_heur_score_cutoff = -10000.0
             force_percentile = false
         end
@@ -473,15 +374,6 @@ function calc_and_set_br_sw_heur_scores!(nw_data;
             # if the set is empty, the MIP might become an LP, not calling the callback, and thus making the remaining pipeline fail
             @warn("No switchable branches found with score above cutoff $br_sw_heur_score_cutoff. Setting the first branch as switchable.")
             sw_branches_after_score = [first(keys(branch_switching_scores))]
-        end
-
-        # An absolute budget includes initially open branches and resolves ties by branch ID.
-        if cutoff_mode == :abs_num && heur_weights[:FULL] == 0
-            initially_open = get(heur_params, :INITIALLY_OPEN_FIRST, false)
-            order = admittance_branch_order(nw_data, branch_switching_scores, keys(branch_switching_scores);
-                initially_open_first=initially_open)
-            sw_branches_after_score = order[1:min(params[:N_SW_BR_ABS], length(order))]
-            force_percentile = false
         end
 
         # filter out branches with the same score randomly
@@ -501,33 +393,33 @@ function calc_and_set_br_sw_heur_scores!(nw_data;
         end
     end
 
-    # sort the branch switching scores and give each branch a priority (integer, only used if branching priority is activated)
+    # sort the branch switching scores and give each branch a priority (integer) 
     branch_switching_priorities = Dict{Int64, Int64}()
-    for (i, branch_idx) in enumerate(sort(collect(keys(branch_switching_scores)), by = x -> branch_switching_scores[x]))
-        branch_switching_priorities[branch_idx] = i 
+    for (i, branch_idx) in enumerate(sort(collect(keys(branch_switching_scores)), by = x -> branch_switching_scores[x], rev = true))
+        branch_switching_priorities[branch_idx] = i
     end
-    
-    cutoff = minimum([PARAMS[:BRANCHING][:MAX_NUM], length(branch_switching_scores) * PARAMS[:BRANCHING][:MAX_PCT]])
+
+
     for (_, branch) in nw_data["branch"]
+        branch["old_switchable"] = branch["switchable"]
 
         # if branch is not switchable, no score had to be assigned
-        if only_switchable && ! is_branch_switchable(branch)
+        if ! branch["switchable"]
             continue
         end
-        
+
         # set score (float)
         branch["sw_heur_score"] = branch_switching_scores[branch["index"]]
-        
-        # set priority (int) - only supports binary (prioritized or not) 
-        branch["sw_heur_priority"] = branch_switching_priorities[branch["index"]] ≤ cutoff ? 1 : 0
-        
+
+        # set priority (int)
+        branch["sw_heur_priority"] = branch_switching_priorities[branch["index"]]
+
         # set switchability
         if set_switchability
-            branch["old_switchable"] = is_branch_switchable(branch)
             branch["switchable"] = branch["index"] ∈ sw_branches_after_score || get(branch, "heur_switched", false)
         end
     end
-    set_switchability && @info("Switchable branches: $(length(filter(x -> x[2]["switchable"], nw_data["branch"])))")
+    @info("Switchable branches: $(length(filter(x -> x[2]["switchable"], nw_data["branch"])))")
 end
 
 ### Helper Functions ###
@@ -535,10 +427,7 @@ end
 function reset_switchability!(nw_data)
     for (_, branch) in nw_data["branch"]
         branch["heur_switchable"] = branch["switchable"]
-        # `old_switchable` is only set on branches that went through the score-based switchability
-        # update (see `calc_and_set_br_sw_heur_scores!`); for unaffected (e.g. non-switchable)
-        # branches we fall back to the current value so the reset is a no-op.
-        branch["switchable"] = get(branch, "old_switchable", branch["switchable"])
+        branch["switchable"] = branch["old_switchable"]
         branch["heur_switched"] = Bool(get(branch, "z_branch_change_start", 0.0))
         if branch["heur_switched"]
             @info("Branch $(branch["index"]) was switched in the heuristic. Leaving it as switchable.")
@@ -548,7 +437,7 @@ end
 
 ### Primal Heuristics (embedded in solving) ###
 "given some indices of z_branch variables that should be set to 0, build a list of solutions where each solution has exactly one of these variables set to 0"
-function build_benders_solutions(master_vars, master_var_vals, cb_data, z_branch_vars_not_one_idxs)::Tuple{Vector{Tuple{Vector{VariableRef}, Vector{Float64}}}, Vector{Dict{Symbol, AbstractVector}}}
+function build_benders_solutions(master_vars, master_var_vals, cb_data, z_branch_vars_not_one_idxs)::Tuple{Vector, Vector{Vector}}
     sols = Vector{Tuple{Vector{VariableRef}, Vector{Float64}}}()
     master_var_vals_modifieds = Vector{Dict{Symbol, AbstractVector}}() # store modified master variable values for each solution
     for idx in z_branch_vars_not_one_idxs
@@ -595,7 +484,7 @@ function scots_rounding_heuristic_sw_score(pm, master_vars, master_var_vals, cb_
         if sw_heur_score > 0.2
             val = JuMP.callback_value(cb_data, var)
             # skip variables already switched off
-            if ! isapprox(val, 1.0, atol=SOLVER_PRECISION)
+            if isapprox(val, 1.0, atol=SOLVER_PRECISION)
                 push!(z_branch_vars_not_one_idxs, idx)
             end
         end
@@ -622,12 +511,12 @@ function enable_heuristic_solving!(data, application::String, timesteps::Int)
         return
     end
 
-    @warn("Solving $application heuristically using switching heuristics '$(PARAMS[:HEURISTIC_SOLVING][:RSCOTS][:WEIGHTS])'.")
+    @warn("Solving $application heuristically using switching heuristic '$(PARAMS[:HEURISTIC_SOLVING][:RSCOTS][:BR_SW_HEUR])'.")
     @assert(haskey(data, "result"), "No result data available for heuristic solving. Try enabling WARMSTART_MODE to calculate powerflow for branch switching relevance score calculation.")
     calc_and_set_br_sw_heur_scores!(data["nw"]["1"], 
                                     nw_sol=data["result"]["solution"]["nw"]["1"], 
                                     params=PARAMS[:HEURISTIC_SOLVING][:RSCOTS], 
-                                    heur_params=PARAMS[:HEURISTIC_SOLVING][:RSCOTS][:HEUR])
+                                    heur_params=PARAMS[:HEURISTIC_SOLVING][:RSCOTS][:HEUR][PARAMS[:HEURISTIC_SOLVING][:RSCOTS][:BR_SW_HEUR]])
 
     if PARAMS[:HEURISTIC_SOLVING][:KEEP_WARMSTART_SWITCHABILITY]
         for (_, nw_data) in data["nw"]

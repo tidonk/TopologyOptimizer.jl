@@ -25,7 +25,7 @@ function test_dc_scots_slack_benders_warmstart(path_prefix)
         additional_params = Dict{Symbol, Any}(:WARMSTARTING => Dict{Symbol, Any}(:WARMSTART_METHOD => :rscots, 
                                                                                  :WARMSTART_SW_HEUR => :congprox),
                                                    :BENDERS => Dict{Symbol, Any}(:SUBPROBLEM_SOLVER_TYPE => TopologyOptimizer.LinEqSysSolver,
-                                                                                 :PARTIAL_DECOMP => Dict{Symbol, Any}(:ENABLED => true, :INCLUDE_BASE_PF => true, :N_MAX_CONTINGENCIES => 0, :N_MAX_CONTINGENCIES_PCT => 0.0)))
+                                                                                 :BASE_PF_IN_MASTER => true))
 
         run_multi_test(CONSTS[:TEST_SETS][:PIPELINE_TESTSET], path_prefix = path_prefix, application = "DC_SCOTS_TIME_SLACK_BENDERS", additional_params = additional_params, test_busbars = true, test_reconf = true, test_name = "DC_SCOTS_BENDERS_LEQ_WS")
     end

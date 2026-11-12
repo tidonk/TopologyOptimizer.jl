@@ -62,10 +62,10 @@ function constraint_power_balance_all(pm::AbstractPowerModel; nw::Int=nw_id_defa
     bus_arcs = Vector()
     bus_arcs_dc = Vector()
     bus_arcs_sw = Vector()
-    bus_gens = reduce(vcat, [ref(pm, nw, :bus_gens, i) for i in ids(pm, nw, :bus)])
-    bus_loads = reduce(vcat, [ref(pm, nw, :bus_loads, i) for i in ids(pm, nw, :bus)])
-    bus_shunts = reduce(vcat, [ref(pm, nw, :bus_shunts, i) for i in ids(pm, nw, :bus)])
-    bus_storage = reduce(vcat, [ref(pm, nw, :bus_storage, i) for i in ids(pm, nw, :bus)])
+    bus_gens = append!([ref(pm, nw, :bus_gens, i) for i in ids(pm, nw, :bus)]...)
+    bus_loads = append!([ref(pm, nw, :bus_loads, i) for i in ids(pm, nw, :bus)]...)
+    bus_shunts = append!([ref(pm, nw, :bus_shunts, i) for i in ids(pm, nw, :bus)]...)
+    bus_storage = append!([ref(pm, nw, :bus_storage, i) for i in ids(pm, nw, :bus)]...)
 
     bus_pd = Dict(k => ref(pm, nw, :load, k, "pd") for k in bus_loads)
     bus_qd = Dict(k => ref(pm, nw, :load, k, "qd") for k in bus_loads)
@@ -76,6 +76,7 @@ function constraint_power_balance_all(pm::AbstractPowerModel; nw::Int=nw_id_defa
     constraint_power_balance(pm, nw, 0, bus_arcs, bus_arcs_dc, bus_arcs_sw, bus_gens, bus_storage, bus_pd, bus_qd, bus_gs, bus_bs)
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 ""
 function constraint_ohms_yt_from_on_off(pm::AbstractPowerModel, i::Int; nw::Int=nw_id_default)
     branch = ref(pm, nw, :branch, i)
@@ -101,6 +102,7 @@ function constraint_ohms_yt_from_on_off(pm::AbstractPowerModel, i::Int; nw::Int=
     constraint_ohms_yt_from_on_off(pm, nw, i, f_bus, t_bus, f_idx, t_idx, g, b, g_fr, b_fr, tr, ti, tm, vad_min, vad_max)
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 ""
 function constraint_ohms_yt_to_on_off(pm::AbstractPowerModel, i::Int; nw::Int=nw_id_default)
     branch = ref(pm, nw, :branch, i)
@@ -457,6 +459,7 @@ end
 
 ### vad
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 ""
 function constraint_voltage_angle_difference(pm::AbstractPowerModel, i::Int; nw::Int=nw_id_default)
     branch = ref(pm, nw, :branch, i)
@@ -471,6 +474,7 @@ function constraint_voltage_angle_difference(pm::AbstractPowerModel, i::Int; nw:
     #end
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 ""
 function constraint_voltage_angle_difference_on_off(pm::AbstractPowerModel, i::Int; nw::Int=nw_id_default)
     branch = ref(pm, nw, :branch, i)
@@ -622,6 +626,7 @@ function constraint_dcline_power_losses_sec(pm::AbstractPowerModel, i::Int, c::C
     constraint_dcline_power_losses_sec(pm, nw, f_bus, t_bus, f_idx, t_idx, loss0, loss1)
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 "limit a gen's power to 0 if it is off, and to pmax otherwise"
 function constraint_gen_power_on_off(pm::AbstractPowerModel, i::Int; nw::Int=nw_id_default)
     gen = ref(pm, nw, :gen, i)
@@ -658,6 +663,8 @@ function _get_slack_bounds(pm::AbstractPowerModel, nw::Int, i::Int, component::D
     elseif slack_type == :vm
         lb = component["vmin"]
         ub = component["vmax"]
+    elseif slack_type == :pg_delta_percentage
+        lb, ub = (-component["pg_delta_percentage"], component["pg_delta_percentage"])
     elseif slack_type == :ratea
         ub = get_adjusted_rate_a(pm, component)
     elseif slack_type == :vad
@@ -735,11 +742,13 @@ function constraint_gen_power_gsk_linking(pm::AbstractPowerModel; nw::Int=nw_id_
     end
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 ""
 function constraint_theta_ref(pm::AbstractPowerModel, i::Int; nw::Int=nw_id_default)
     constraint_theta_ref(pm, nw, i)
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 ""
 function constraint_power_balance(pm::AbstractPowerModel, i::Int; nw::Int=nw_id_default)
     bus = ref(pm, nw, :bus, i)
@@ -760,6 +769,7 @@ function constraint_power_balance(pm::AbstractPowerModel, i::Int; nw::Int=nw_id_
     constraint_power_balance(pm, nw, i, bus_arcs, bus_arcs_dc, bus_arcs_sw, bus_gens, bus_storage, bus_pd, bus_qd, bus_gs, bus_bs)
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 ""
 function constraint_ohms_yt_from(pm::AbstractPowerModel, i::Int; nw::Int=nw_id_default)
     branch = ref(pm, nw, :branch, i)
@@ -778,6 +788,7 @@ function constraint_ohms_yt_from(pm::AbstractPowerModel, i::Int; nw::Int=nw_id_d
 end
 
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 ""
 function constraint_ohms_yt_to(pm::AbstractPowerModel, i::Int; nw::Int=nw_id_default)
     branch = ref(pm, nw, :branch, i)

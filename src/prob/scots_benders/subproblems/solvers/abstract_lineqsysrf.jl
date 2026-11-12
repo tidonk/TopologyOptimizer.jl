@@ -21,7 +21,7 @@ function _solve_factorized(L::SparseArrays.SparseMatrixCSC{Float64, Int64}, U::S
     z = U \ (L \ (row_scaling .* b)[row_perm])
     x = z[invperm(col_perm)]
 
-    if !all(isfinite, x)
+    if isnan(x[1])
         throw(LinearAlgebra.SingularException(0))
     end
 
@@ -39,9 +39,6 @@ end
 
 "factorizes `solver.linsolve.A` into a (L,U,p,q,Rs)-factorization, then solves the equation system Ax = `solver.linsolve.b`"
 function _factorize_and_solve_opt!(solver::AbstractLinEqSysRfSolver)::Vector{Float64}
-    # ground the cached factors while keeping solver.A unchanged
-    solver.grounding_refs = pf_component_references(solver.A)
-    solver.linsolve.A = grounded_pf_matrix(solver.A, solver.grounding_refs)
     sol = LinearSolve.solve!(solver.linsolve)
             
     # couldn't solve
@@ -67,17 +64,12 @@ end
 # shared functions for LinEqSysRfSolver and LinEqSysBBRfSolver
 "solves problem in its current state, returns success flag"
 function solve_primal!(solver::AbstractLinEqSysRfSolver)::Bool
-    # A remove/restore sequence can damage the updated factors even if the
-    # final component references are unchanged. Retry once with fresh factors.
-    used_cached_factors = false
     try
-        # Rank-one branch updates preserve the old grounding. Splitting or
-        # reconnecting components can require a different set of references.
-        if solver.is_factorized && pf_component_references(solver.A) != solver.grounding_refs
-            solver.is_factorized = false
-        end
-        used_cached_factors = solver.is_factorized
         if !solver.is_factorized
+            # check connectivity before UMFPACK factorization to prevent segfault on singular matrices
+            if !_is_matrix_connected(solver.A)
+                return false
+            end
             # new factorization
             solver.linsolve.A = solver.A
             solver.linsolve.b = solver.power_surplus
@@ -85,12 +77,6 @@ function solve_primal!(solver::AbstractLinEqSysRfSolver)::Bool
             solver.vas = _factorize_and_solve_opt!(solver)
         else
             solver.vas = _solve_factorized_opt(solver, solver.power_surplus)
-        end
-        if !valid_pf_linear_solution(solver.A, solver.vas, solver.power_surplus)
-            callback_stats[:n_leq_residual_failures] += 1
-            callback_stats[:n_leq_fails] += 1
-            solver.is_factorized = false
-            return used_cached_factors ? solve_primal!(solver) : false
         end
     catch e
         if isa(e, DimensionMismatch)
@@ -100,13 +86,12 @@ function solve_primal!(solver::AbstractLinEqSysRfSolver)::Bool
                 @error("$(e) while not factorized. Sizes: A $(size(solver.linsolve.A)), b $(size(solver.linsolve.b)), components $(size(solver.components)).")
             end
         elseif isa(e, LinearAlgebra.SingularException)
-            callback_stats[:n_leq_fails] += 1
         else
             rethrow(e)
         end
             
         solver.is_factorized = false
-        return used_cached_factors ? solve_primal!(solver) : false
+        return false
     end
     return true
 end
@@ -115,18 +100,17 @@ end
 function solve_dual_opt!(solver::AbstractLinEqSysRfSolver)::Bool
     try
         if !solver.is_factorized
+            # check connectivity before UMFPACK factorization to prevent segfault on singular matrices
+            if !_is_matrix_connected(solver.A)
+                callback_stats[:n_leq_fails] += 1
+                return false
+            end
             # new factorization
             solver.linsolve.b = solver.dual_rhs
 
             solver.duals = _factorize_and_solve_opt!(solver)
         else
             solver.duals = _solve_factorized_opt(solver, solver.dual_rhs)
-        end
-        if !valid_pf_linear_solution(solver.A, solver.duals, solver.dual_rhs)
-            callback_stats[:n_leq_residual_failures] += 1
-            callback_stats[:n_leq_fails] += 1
-            solver.is_factorized = false
-            return false
         end
     catch e
         if isa(e, DimensionMismatch)

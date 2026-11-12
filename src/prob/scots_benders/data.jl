@@ -66,6 +66,49 @@ function get_lhs_benders_cut(con::JuMP.ConstraintRef, var_to_master_vars::Dict{V
     return expr
 end
 
+"[unused] gets lhs values of subproblem constraints to be multiplied with dual"
+function get_lhs_val(cons::Vector{JuMP.ConstraintRef}, master_var_vals::Dict{Symbol, AbstractVector})::Vector{Float64}
+    ret = Vector{JuMP.Float64}()
+
+    # we are building an expression of the form "rhs + coeff1 * var1 + ..."
+    for con in cons
+        # get all variables that are part of the constraint if they are contained in the master variables, i.e., should be used for the cut
+        vars = [var for var in keys(JuMP.constraint_object(con).func.terms) if get_var_basename(var) ∈ keys(master_var_vals)]
+
+        # init expr to rhs
+        rhs  = JuMP.normalized_rhs(con)
+        if PARAMS[:PRECISION][:SOLVER_PREC_DIGITS] >= 0 && PARAMS[:ROUNDING][:MODEL_COEFFS]
+            rhs = round(rhs, digits=PARAMS[:PRECISION][:SOLVER_PREC_DIGITS])
+        end
+        expr = rhs
+
+        # get coefficients of components corresponding to variables
+        for var in vars
+            # get index of the component the variable corresponds to
+            c_id = parse(Int64, match(r"\[(\d+)\]", JuMP.name(var)).captures[1])
+            
+            # get the coefficient of the variable
+            coeff = JuMP.normalized_coefficient(con, var)
+            if PARAMS[:PRECISION][:SOLVER_PREC_DIGITS] >= 0 && PARAMS[:ROUNDING][:MODEL_COEFFS]
+                coeff = round(coeff, digits=PARAMS[:PRECISION][:SOLVER_PREC_DIGITS])
+            end
+
+            if isapprox(coeff, 0.0, atol=SOLVER_PRECISION)
+                continue
+            end
+
+            # get the exact same variable, but in the master and add the coefficient from the subproblem
+            master_val = master_var_vals[get_var_basename(var)][2][c_id]
+            expr -= coeff * master_val
+        end
+
+        # push data for this constraint
+        append!(ret, [expr]) 
+    end
+
+    return ret
+end
+
 "compares pf and vad of `solver`` with those of its fallback solver"
 function __check_primal_solution_with_fallback(solver, pm::AbstractPowerModel, c::Int64, cb_data, master_var_vals::Dict{Symbol, AbstractVector}, master_var_vals_var::Dict{VariableRef, Float64}, outage_branches::Vector{Int64}, master_vars, lhss, dualss, cut_exprs::Vector{AffExpr}; nw::Int64=nw_id_default)::Tuple{<:Union{Vector{JuMP.ScalarConstraint}, Nothing}, Float64, Symbol, Type}
     if hasfield(typeof(solver), :fallback_solver)
@@ -245,13 +288,17 @@ function check_primal_solution(solver::Union{AbstractMatrixSolver, LPSolver}, pm
     obj_func_value          = 0.0
 
     betas = Dict{Int64, Float64}() # duals corresponding to rating_from_slack_lb/ub: here it is -[the objective function coefficient] of all overloaded branches, else 0
-    vad_violation = Dict{Int64, Float64}() # first branch with a vad violation (4)/(5), stored in case of marginal violation
 
     master_var_vals_branch = master_var_vals[:z_branch]::JuMP.Containers.DenseAxisArray{Float64, 1, Tuple{Vector{Int64}}, Tuple{JuMP.Containers._AxisLookup{Dict{Int64, Int64}}}}
 
     apply_ub_mults=(PARAMS[:LIMIT_MULT]::Dict{Symbol, Any})[:APPLY_UB_MULTS]::Bool
     for_n1 = get(pm.data, "SUBPROBLEM", false)::Bool
     for (branch_id, branch::Dict{Symbol, Any}) in solver.branch_data
+        # only check "normal" branches if in busbar mode. We do not use this information for the cut, so we do not have to check it either.
+        if ! is_branch_electrical(branch)
+            continue
+        end
+
         f_bus::Int64 = branch[:f_bus]
         t_bus::Int64 = branch[:t_bus]
 
@@ -259,35 +306,29 @@ function check_primal_solution(solver::Union{AbstractMatrixSolver, LPSolver}, pm
 
         # the matrix solver will always return a flow (based on the buses' angles), even if disconnected, off, or outaged. We do not use this information for the cut, so we do not have to check it either. However, we need to check vads for off branches
         if typeof(solver) <: AbstractMatrixSolver 
-            if solver.bus_to_col[f_bus] ≤ 0 || solver.bus_to_col[t_bus] ≤ 0 || branch_id ∈ outage_branches
+            if solver.bus_to_col[f_bus] ≤ 0 || solver.bus_to_col[t_bus] ≤ 0 || (branch_id ∈ outage_branches && ! is_branch_switchable(branch))
                 continue
             end
 
             # else
-            if is_off
+            if branch_id ∈ outage_branches || is_off
 
                 if PARAMS[:BIG_M_MULT][:SET_MAX_ANGLE_CLOSE]
                     # (5) check all off branches for vad violations - also non-electrical ones
                     vad = get_vad(solver, f_bus, t_bus)
 
-                    angmin = branch[:angmin_close]::Float64
-                    angmax = branch[:angmax_close]::Float64
+                    angmin = branch[:angmin_close]::Float64 - SOLVER_PRECISION::Float64
+                    angmax = branch[:angmax_close]::Float64 + SOLVER_PRECISION::Float64
 
                     # check (5): vad violations of off branches: check whether not angmin ≤ vad ≤ angmax
-                    if vad < angmin - 5*SOLVER_PRECISION || angmax + 5*SOLVER_PRECISION < vad
+                    if vad < angmin || angmax < vad
                         return (true, false, -1.0, Dict{Int64, Float64}(branch_id => vad))
-                    elseif (vad < angmin - SOLVER_PRECISION || angmax + SOLVER_PRECISION < vad) && isempty(vad_violation)
-                        vad_violation[branch_id] = vad # marginal -> look for better cut
                     end
                 end
 
                 continue
             end
         end
-
-        # Active busbar couplers are represented by equal angles in the matrix.
-        # Off couplers still have angle bounds and were checked above.
-        is_branch_electrical(branch) || continue
 
         # calculate vad and pf
         vad = get_vad(solver, f_bus, t_bus)
@@ -307,18 +348,15 @@ function check_primal_solution(solver::Union{AbstractMatrixSolver, LPSolver}, pm
                 continue # there cannot be any rate a or angle violations for switched-off branches, so continue
             end
         end
-        angmin = branch[:angmin]::Float64
-        angmax = branch[:angmax]::Float64
+        angmin = branch[:angmin]::Float64 - SOLVER_PRECISION::Float64
+        angmax = branch[:angmax]::Float64 + SOLVER_PRECISION::Float64
 
         # check (4): vad violations: check whether not angmin ≤ vad ≤ angmax
-        if vad < angmin - SOLVER_PRECISION || angmax + SOLVER_PRECISION < vad
+        if vad < angmin || angmax < vad
             if print_costs
                 @printf("Angle violation: %4d with vad %8.4f not in [%8.4f, %8.4f]\n", branch_id, vad, angmin, angmax)
             end
-            if vad < angmin - 5*SOLVER_PRECISION || angmax + 5*SOLVER_PRECISION < vad
-                return (true, false, -1.0, Dict{Int64, Float64}(branch_id => vad)) # we need a feasibility cut, so one violating branch is sufficient
-            end
-            isempty(vad_violation) && (vad_violation[branch_id] = vad) # marginal -> look for better cut
+            return (true, false, -1.0, Dict{Int64, Float64}(branch_id => vad)) # we need a feasibility cut, so one violating branch is sufficient
         end
 
         # check (4.1): rate a violations that cannot be covered with slack (see constraint_thermal_limit_*_slack_on_off)
@@ -347,11 +385,6 @@ function check_primal_solution(solver::Union{AbstractMatrixSolver, LPSolver}, pm
         if _isapproxgreatereq(master_var_vals[:η][c], obj_func_value, atol=SOLVER_PRECISION)
             has_new_cut = false
         end
-    end
-
-    # marginal (4)/(5) violation (at most 5x the tolerance) might yield numerically unstable feas cuts -> only choose them if no better cut was found
-    if ! isempty(vad_violation) && ! has_new_cut
-        return (true, false, -1.0, vad_violation)
     end
 
     return (has_new_cut, only_ratea_violations, obj_func_value, betas)
@@ -418,7 +451,7 @@ function add_branching_priorities(pm::AbstractPowerModel; nw::Int64=nw_id_defaul
     for (b_id, branch) in ref(pm, nw, :branch)
         if is_branch_switchable(branch) && pm.data["WARMSTART_PROVIDED"]
             # for each branch retrieve the variable from the model
-            z = var(pm, nw, :z_branch, b_id)
+            z = var(pm, 1, :z_branch, b_id)
             # and set the priority
             MOI.set(JuMP.backend(pm.model).optimizer, Gurobi.VariableAttribute("BranchPriority"), z.index, branch["sw_heur_priority"])
         end

@@ -321,7 +321,7 @@ function set_ac_data_values!(data::Dict{String, Any}, result::Dict{String, Any},
         @warn("All contingencies are included in the AC feasibility check. This might lead to long computation times.")
     elseif contingency_selection == :relevant
         @warn("Only contingencies relevant to the DC solution are included in the AC feasibility check. This might lead to discrepencies between true AC feasibility and reported AC feasibility.")
-        relevant_contingencies = get_relevant_contingencies(data, result=result)
+        relevant_contingencies = get_relevant_contingencies_from_benders(data, result)
     else
         @warn("No contingencies are included in the AC feasibility check. Quality of AC feasibility check will be reduced significantly.")
     end

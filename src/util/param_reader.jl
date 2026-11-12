@@ -87,20 +87,3 @@ function parse_params(file_path::String)
     converted_toml_data::Dict{Symbol, Any} = convert_params(toml_data)
     return converted_toml_data
 end
-
-"backwards compatibility: if a legacy `[BENDERS] BASE_PF_IN_MASTER` value is present (e.g. from older TOMLs or `additional_params`), move it into `[BENDERS.PARTIAL_DECOMP]` (set `ENABLED=true`, `INCLUDE_BASE_PF=<legacy>`) and remove the legacy key. Call once after all TOML/extend operations and before `refresh_derived_params!()`."
-function apply_legacy_base_pf_in_master!()
-    if haskey(PARAMS[:BENDERS], :BASE_PF_IN_MASTER)
-        legacy = pop!(PARAMS[:BENDERS], :BASE_PF_IN_MASTER)
-        PARAMS[:BENDERS][:PARTIAL_DECOMP][:ENABLED]         = true
-        PARAMS[:BENDERS][:PARTIAL_DECOMP][:INCLUDE_BASE_PF] = legacy
-    end
-    return nothing
-end
-
-"refresh derived flags in PARAMS that combine multiple TOML fields (call after any load/mutation of `[BENDERS.PARTIAL_DECOMP]`)."
-function refresh_derived_params!()
-    pd = PARAMS[:BENDERS][:PARTIAL_DECOMP]
-    PARAMS[:BENDERS][:BASE_PF_IN_MASTER] = pd[:ENABLED] && pd[:INCLUDE_BASE_PF]
-    return nothing
-end

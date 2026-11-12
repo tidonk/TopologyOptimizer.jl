@@ -23,7 +23,7 @@ end
 function test_dc_scots_slack_benders(path_prefix)
     @testset verbose = true "LEQ Subproblem (Gens in MP)" begin
         additional_params = Dict{Symbol, Any}(:BENDERS => Dict{Symbol, Any}(:SUBPROBLEM_SOLVER_TYPE => TopologyOptimizer.LinEqSysSolver,
-                                                                            :PARTIAL_DECOMP => Dict{Symbol, Any}(:ENABLED => true, :INCLUDE_BASE_PF => true, :N_MAX_CONTINGENCIES => 0, :N_MAX_CONTINGENCIES_PCT => 0.0),
+                                                                            :BASE_PF_IN_MASTER => true,
                                                                             :NESTED => Dict{Symbol, Any}(:GENERATION_IN_MP => true, :BASE_PF_IN_INTERMEDIATE => true)))
 
         run_multi_test(CONSTS[:TEST_SETS][:PIPELINE_TESTSET], path_prefix = path_prefix, application = "DC_SCOTS_TIME_SLACK_BENDERS_NESTED", additional_params = additional_params, test_busbars = false, test_reconf = false, test_name = "DC_SCOTS_BENDERS_NESTED_LEQ_BFMP_GMP")

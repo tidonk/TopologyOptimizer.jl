@@ -387,6 +387,7 @@ function constraint_gen_power_gsk_linking_real(pm::AbstractActivePowerModel, n::
     end 
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 ""
 function constraint_power_balance(pm::AbstractActivePowerModel, n::Int, i::Int, bus_arcs, bus_arcs_dc, bus_arcs_sw, bus_gens, bus_storage, bus_pd, bus_qd, bus_gs, bus_bs)
     p    = get(var(pm, n),    :p, Dict()); _check_var_keys(p, bus_arcs, "active power", "branch")
@@ -438,6 +439,7 @@ function constraint_power_balance(pm::AbstractActivePowerModel, n::Int, i::Int, 
     end
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 ""
 function constraint_thermal_limit_from_on_off(pm::AbstractActivePowerModel, n::Int, i, f_idx, rate_a)
     p_fr = var(pm, n, :p, f_idx)
@@ -461,6 +463,7 @@ function constraint_branch_from_on_off(pm::AbstractActivePowerModel, n::Int, i, 
     end
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 ""
 function constraint_thermal_limit_to_on_off(pm::AbstractActivePowerModel, n::Int, i, t_idx, rate_a)
     p_to = var(pm, n, :p, t_idx)

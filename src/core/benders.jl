@@ -36,86 +36,11 @@ For a given list of score names and their weights, calculate the weighted sum an
 - `subproblem_prio_list`: list of subproblems
 - `counters`: dictionary of counters (not yet used)
 "
-function _prio_pre_weighted_sum!(subproblem_prio_list::Vector{Dict{Symbol, Any}}, counters::Dict{Symbol, Real}; data=Dict())
+function _prio_pre_weighted_sum!(subproblem_prio_list::Vector{Dict{Symbol, Any}}, counters::Dict{Symbol, Real})
     if PARAMS[:BENDERS][:PARTIAL][:SORTING_MODE] == :SCORE
-        # decay running counters before adding this round's observations
-        decay = PARAMS[:BENDERS][:PARTIAL][:SCORE_DECAY]
-        if decay < 1.0
-            for entry in subproblem_prio_list
-                entry[:n_calls]        *= decay
-                entry[:n_cuts_used]    *= decay
-                entry[:sum_violations] *= decay
-            end
-        end
-
         score_names = [score_name for (score_name, score_weight) in PARAMS[:BENDERS][:PARTIAL][:SCORE] if score_weight > 0.0]
         if :total_share ∈ score_names
             n_cuts_total = max(sum(e[:n_cuts_used] for e in subproblem_prio_list), 1)
-        end
-
-        if :diversity ∈ score_names
-
-            # one medoid and corresponding clusters, use one element of each cluster before going to the next
-            if haskey(data, :sp_clusters)
-                sort!(subproblem_prio_list, by=(entry->entry[:contingency_id]))
-
-                clusters = deepcopy(data[:sp_clusters])
-                
-                medoids_first = PARAMS[:BENDERS][:PARTIAL][:SCORE_DIV][:MEDOIDS_FIRST]
-                
-                max_length = maximum(length(cluster[2]) for cluster in clusters)
-                
-                # random initialization
-                shuffle!(clusters)
-
-                for cluster in clusters
-                    shuffle!(cluster[2])
-
-                    append!(cluster[2], zeros(max_length - length(cluster[2])))
-                end
-
-                # sort list, one element of each cluster before going to the next set of elements
-                pos = length(subproblem_prio_list)
-                
-                if medoids_first
-                    # set medoids with the highest prio
-                    for cluster in clusters
-                        subproblem_prio_list[cluster[1]][:diversity] = pos
-                        pos -= 1
-                    end
-                end
-                
-                for sp_ids in zip([cluster[2] for cluster in clusters]...)
-                    for (cluster_id, sp_id) in enumerate(sp_ids)
-                        ((medoids_first && sp_id == clusters[cluster_id][1]) || sp_id == 0) && continue # == medoid or past length?
-                        
-                        entry = subproblem_prio_list[sp_id]        
-                        entry[:diversity] = pos
-
-                        pos -= 1
-                    end
-                end
-
-            # sets of medoids, use each set before using the next
-            elseif haskey(data, :sp_medoidss)
-                sort!(subproblem_prio_list, by=(entry->entry[:contingency_id]))
-
-                medoidss = shuffle!(data[:sp_medoidss])
-
-                pos = length(medoidss)
-
-                for medoids in medoidss
-
-                    for sp_id in medoids
-                        entry = subproblem_prio_list[sp_id]        
-                        entry[:diversity] = pos
-                    end
-
-                    pos -= 1
-
-                end
-            end
-
         end
 
         #@info("Calculating scores for $(length(subproblem_prio_list)) subproblems")
@@ -135,12 +60,7 @@ function _prio_pre_weighted_sum!(subproblem_prio_list::Vector{Dict{Symbol, Any}}
             end
 
             if :violation_per_cut ∈ score_names
-                entry[:violation_per_cut] = entry[:n_calls] == 0 ? 0 : entry[:sum_violations] / entry[:n_calls]
-            end
-
-            # uniformly random exploration component (re-sampled each round)
-            if :random ∈ score_names
-                entry[:random] = rand()
+                entry[:violation_per_cut] = entry[:n_cuts_used] == 0 ? 0 : entry[:sum_violations] / entry[:n_calls]
             end
 
             # calc weighted sum of scores to get priority
@@ -207,8 +127,8 @@ function get_outage_branches(pm_sub::AbstractPowerModel, contingency::Contingenc
 
     # filter out branches that are already off (if they are switchable, check z_branch, else check status)
     if filter
-        for branch_id in copy(outage_branches) # avoid skipping removed entries
-            branch = ref(pm_sub, nw, :branch, branch_id)
+        for branch_id in outage_branches
+            branch = ref(pm_sub, 1, :branch, branch_id)
             # if branch is inactive (if possible, by choice, else by data)
             if (is_branch_switchable(branch) ? isapprox(master_var_vals[:z_branch][branch_id], 0.0, atol=SOLVER_PRECISION) : branch["status"] == 0)
                 filter!(b_id -> b_id ≠ branch_id, outage_branches)
@@ -338,12 +258,10 @@ function get_sub_cons_for_duals_gen_model(pm_sub::AbstractPowerModel; with_pf::B
     # categorize subproblem constraints
     conss = JuMP.all_constraints(pm_sub.model, include_variable_in_set_constraints = false)
 
-    cons_symbols = sort(collect(keys(sub_cons_for_duals)), by=s -> length(string(s)), rev=true)
-
     n_other = 0
     for con in conss
         added = false
-        for cons_symbol in cons_symbols
+        for cons_symbol in keys(sub_cons_for_duals)
 
             # check if constraint is of matching type, then add to dict with the corresponding comp(onent)_id
             if occursin(string(cons_symbol), JuMP.name(con))
@@ -461,13 +379,13 @@ function get_master_decisions(pm::AbstractPowerModel, cb_data; nw::Int64=nw_id_d
     if haskey(var(pm, nw), :z_branch_change)
         for z_change_var in var(pm, nw, :z_branch_change)
             z_change_val = JuMP.callback_value(cb_data, z_change_var)
-            if z_change_val > 0.5 # switching action
+            if isapprox(z_change_val, 1, atol = SOLVER_PRECISION) # z_branch_change is 1, so a switch took place
                 br_id       = get_var_idx(z_change_var)
                 branch      = ref(pm, nw, :branch, br_id)
                 z_val       = JuMP.callback_value(cb_data, var(pm, nw, :z_branch, br_id))
                 
                 # if there is no cost on z_branch_change, z_branch_change can be 1, but no switch took place
-                if round(z_val) != branch["status"]
+                if ! isapprox(z_val, branch["status"], atol =SOLVER_PRECISION) 
                     if branch["status"] == 1
                         push!(switched_off_by_master, br_id)
                         #@info("Switching OFF branch $(lpad(br_id, 4, ' ')) $(branch["name"])")
@@ -482,17 +400,9 @@ function get_master_decisions(pm::AbstractPowerModel, cb_data; nw::Int64=nw_id_d
     return switched_off_by_master, switched_on_by_master
 end
 
-"bus, load and gen data of `data`, tolerating both Symbol-keyed (runtime callback) and String-keyed (preprocessing) data dicts"
-function _bus_load_gen(data::Dict)::Tuple{Dict, Dict, Dict}
-    bus_key  = haskey(data, :bus)  ? :bus  : "bus"
-    load_key = haskey(data, :load) ? :load : "load"
-    gen_key  = haskey(data, :gen)  ? :gen  : "gen"
-    return data[bus_key], data[load_key], data[gen_key]
-end
-
 "check if the network induced by the `bus_list` has any loads that need to be satisfied"
 function _network_powered(data::Dict; bus_list::Vector{Int64}=[])::Bool
-    return _network_powered(_bus_load_gen(data)..., bus_list = bus_list)
+    return _network_powered(data[:bus], data[:load], data[:gen], bus_list = bus_list)
 end
 
 "check if the network induced by the `bus_list` has any loads that need to be satisfied"
@@ -500,36 +410,21 @@ function _network_powered(bus_data::Dict, load_data::Dict, gen_data::Dict; bus_l
     if isempty(bus_list)
         bus_list = keys(bus_data)
     end
-    # if some load (that we cannot curtail) has nonzero pd
+    total_pd = 0
     for (_, load) in load_data
-        if load["load_bus"] ∈ bus_list && load["status"] == 1 && load["pd"] != 0
-            return true
+        if load["load_bus"] ∈ bus_list && load["status"] == 1
+            total_pd += load["pd"]::Float64
         end
     end
-    # if some gen (that we cannot turn off) cannot operate at 0
+    total_pg_min, total_pg_max = 0.0, 0.0
     for (_, gen) in gen_data
-        if gen["gen_bus"] ∈ bus_list && gen["status"] == 1 && (gen["pmax"] != 0 || gen["pmin"] != 0)
-            return true
+        if gen["gen_bus"] ∈ bus_list && gen["status"] == 1
+            total_pg_min += gen["switchable"] ? min(0, gen["pmin"]::Float64) : gen["pmin"]::Float64
+            total_pg_max += gen["pmax"]::Float64
         end
     end
-
-    return false
-end
-
-"returns all powered buses of the network"
-function _powered_buses(load_data::Dict, gen_data::Dict)::Set{Int64}
-    powered_buses = Set{Int64}()
-    for (_, load) in load_data
-        if load["status"] == 1 && load["pd"] != 0
-            push!(powered_buses, load["load_bus"])
-        end
-    end
-    for (_, gen) in gen_data
-        if gen["status"] == 1 && (gen["pmax"] != 0 || gen["pmin"] != 0)
-            push!(powered_buses, gen["gen_bus"])
-        end
-    end
-    return powered_buses
+    
+    return total_pd > 0 || total_pg_min > 0
 end
 
 "get the f_bus and t_bus of a branch"

@@ -100,9 +100,6 @@ include("util/param_reader.jl")
 include("util/util.jl")
 include("util/warmstart.jl")
 include("util/cut_carry_forward.jl")
-include("util/parallel_helper_scores.jl")
-include("util/admittance_scores.jl")
-include("util/parallel_incumbents.jl")
 include("util/common.jl")
 include("util/heuristics.jl")
 
@@ -131,6 +128,7 @@ include("prob/scots.jl")
 include("prob/scots_benders/data.jl")
 include("prob/scots_benders/scots_benders.jl")
 include("prob/scots_benders/scots_benders_nested.jl")
+include("prob/scots_benders/ots_no_pf.jl")
 include("prob/scots_benders/switching_model.jl")
 include("prob/scots_benders/gen_model.jl")
 include("prob/scots_benders/subproblems/shared.jl")
@@ -167,8 +165,8 @@ function load_params_constants(params_file::String, constants_file::String)
 end
 
 "main function to execute code from the TopologyOptimizer project"
-function main(data_or_casefile::Union{String, Dict};
-              application::String                       = "",                   # application identifier
+function main(data_or_casefile::Union{String, Dict}; 
+              application::String                       = "DC_SCOTS_TIME_SLACK_BENDERS",           # application identifier
               slack_types::Vector{Symbol}               = [:ratea],             # types of slack variables out of [:pg, :qg, :ratea, :dclinepf, :vad, :pd]
               busbars::Bool                             = true,                 # use formulation allowing for lossless lines (required to correctly model busbars)
               timesteps::Int64                          = 1,                    # number of time steps
@@ -188,16 +186,10 @@ function main(data_or_casefile::Union{String, Dict};
     load_params_constants(params_file, joinpath(@__DIR__, "constants.toml"))
     extend_dict!(PARAMS, additional_params)
     extend_dict!(CONSTS, additional_consts)
-    apply_legacy_base_pf_in_master!()
-    refresh_derived_params!()
 
     create_dirs(CONSTS[:USER_ENVIRONMENT][:DIRECTORIES])
     casename = get_casename(data_or_casefile)
     global _CASENAME = casename
-
-    if application == "" 
-        application = PARAMS[:APPLICATION]::String
-    end
 
     # logging
     #push!(_LOGGER, DefaultHandler(joinpath(CONSTS[:USER_ENVIRONMENT][:DIRECTORIES][:LOG_DIR], "log_$casename-$(Dates.format(Dates.now(), "yymmdd-HHMMSS")).log"), DefaultFormatter("[ {level}: {msg}")))
@@ -210,12 +202,7 @@ function main(data_or_casefile::Union{String, Dict};
     solver_convex, solver_nlp, solver_minlp = initialize_solvers(casename, start_time, application=application)
 
     ### Preprocessing ###
-    try
-        preprocess_data!(data, application, slack_types, timesteps, nested, solver_convex, solver_nlp)
-    catch error
-        error isa RestrictedWarmstartFinished || rethrow()
-        return return_data ? (data, error.result) : error.result
-    end
+    preprocess_data!(data, application, slack_types, timesteps, nested, solver_convex, solver_nlp)
 
     ### Solve the application ###
     result = solve_application!(data, application, slack_types, timesteps, nested, solver_convex, solver_nlp)

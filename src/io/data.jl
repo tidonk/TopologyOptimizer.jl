@@ -113,9 +113,6 @@ function preprocess_data!(data::Dict{String, Any},
     PARAMS[:PRINTING][:INSTANCE_INFO] && print_pm_data_info(data)
     PARAMS[:WARMSTARTING][:ENABLED] && warm_start!(data, solver_convex, slack_types)
 
-    # no-op if the warmstart already prepared it; covers the structural modes when running cold
-    occursin("BENDERS", application) && prepare_contingency_selection!(data)
-
     # "wrong" params
     if occursin("BENDERS", application) && PARAMS[:CONTINGENCIES][:SLACK_EQUALS_SEC_SLACK]
         @info("PARAMS[:CONTINGENCIES][:SLACK_EQUALS_SEC_SLACK]=true is not supported in Benders mode and will be ignored.")
@@ -192,7 +189,7 @@ function postprocess_results!(data::Dict{String, Any},
                 @info("Checking individual contingencies (debugging mode).")
 
                 # run compact and Benders formulation for this specific contingency
-                check_relevant_overloads_individual(data, result, solver_convex, get_relevant_contingencies(data, result=result))
+                check_relevant_overloads_individual(data, result, solver_convex, get_relevant_contingencies_from_benders(data, result))
             end
 
             # check AC-feasibility of DC solution

@@ -39,6 +39,134 @@ function delete_matrix_row_and_col(sp::SparseMatrixCSC, pos::Int64)::SparseMatri
 end
   
 
+"[unused] Returns matrix `A`, vector `power_surplus` such that A * va = power_surplus for a master solution given by `master_var_vals`,
+    where vaᵤ is the voltage angle at bus u"
+function build_pf_matrix(pm::AbstractPowerModel,
+                         master_var_vals::Dict{Symbol, AbstractVector},
+                         off_branches::Vector{Int64};
+                         nw::Int64=nw_id_default,
+                         ref_bus::Bool = false
+                        )
+    buses    = ref(pm, nw, :bus)
+    branches = ref(pm, nw, :branch)
+    connected_branchess = get_connected_branchess(pm, nw=nw)
+    n_buses = length(buses)
+    n_branches = length(branches)
+    
+    bus_to_col = zeros(Int64, n_buses)
+    col_counter = 1
+    
+    # the reference bus is left out from the matrix
+    ref_bus_id = 0
+    if ref_bus
+        @assert length(ids(pm, nw, :ref_buses)) == 1
+        for id in ids(pm, nw, :ref_buses)
+            ref_bus_id = id
+            bus_to_col[ref_bus_id] = n_buses
+            #col_to_bus[n_buses] = ref_bus_id
+        end
+    end
+    
+    # build sparse matrix
+    #n_entries = 2 * (n_branches - length(off_branches) - length(connected_branchess[ref_bus_id])) + n_buses - 1
+    n_entries = 2 * (n_branches - length(off_branches)) + n_buses
+    if ref_bus
+        n_entries -= (2*length(connected_branchess[ref_bus_id]) + 1)
+    end
+    col_ids = fill(0,   n_entries)
+    row_ids = fill(0,   n_entries)
+    values  = fill(0.0, n_entries)
+    entry_counter = 1
+    function _push_to_matrix(row_bus_id::Int64, col_bus_id::Int64, value::Real, pos::Int64)
+        @assert(value ≠ 0)
+        row_ids[pos] = bus_to_col[row_bus_id]
+        col_ids[pos] = bus_to_col[col_bus_id]
+        values[pos]  = value
+    end
+
+    # vector "i" for generation/demand surplus - this could also be sparse, but only if significantly fewer than half of all buses do not have any surplus
+    power_surplus = fill(0.0, n_buses - (ref_bus ? 1 : 0))
+
+    # for all buses, fill all entries in their row according to the connected branches
+    for (bus_id, bus) in buses
+        if bus_id == ref_bus_id; continue; end
+
+        b_sum = 0.0
+        if bus_to_col[bus_id] == 0
+            bus_to_col[bus_id] = col_counter
+            #col_to_bus[col_counter] = bus_id
+            col_counter += 1
+        end
+        
+        # for all branches, add their bs to the corresponding entries in the row
+        connected_branches = connected_branchess[bus_id]
+        for branch_id in connected_branches
+            if branch_id ∈ off_branches; continue; end
+            branch = branches[branch_id]
+            other_bus_id = branch["f_bus"] == bus_id ? branch["t_bus"] : branch["f_bus"]
+            if other_bus_id == ref_bus_id; continue; end
+            
+            b = branch["b"]
+            
+            # part of G_k,k
+            b_sum -= b
+            
+            if bus_to_col[other_bus_id] == 0
+                bus_to_col[other_bus_id] = col_counter
+                #col_to_bus[col_counter] = other_bus_id
+                col_counter += 1
+            end
+            
+            @assert(b ≠ 0, "bus $bus_id has a branch with b = 0")
+            # add entry G_k,l
+            _push_to_matrix(bus_id, other_bus_id, b, entry_counter)
+            entry_counter += 1
+            
+        end
+        
+        @assert(b_sum ≠ 0, "bus $bus_id has no connected branches, or cancelling out b values")
+        # add entry G_k,k
+        _push_to_matrix(bus_id, bus_id, b_sum, entry_counter)
+        entry_counter += 1
+    end
+    
+    # actually construct the matrix
+    A = sparse(row_ids, col_ids, values)
+
+    # we set the reference bus va to 0, so we can eliminate the corresponding row by substracting it from another row (eg the first row here)
+    if ref_bus
+        for branch_id in connected_branchess[ref_bus_id]
+            if branch_id ∈ off_branches; continue; end
+            branch = branches[branch_id]
+            other_bus_id = branch["f_bus"] == ref_bus_id ? branch["t_bus"] : branch["f_bus"]
+            A[1,other_bus_id] += branch["b"]
+        end
+    end
+
+    # add load pds to correponding entries in power_surplus
+    for (_, load) in ref(pm, nw, :load)
+        load_bus_id = load["load_bus"]
+        if load_bus_id != ref_bus_id
+            power_surplus[bus_to_col[load_bus_id]] -= load["pd"]
+        else
+            power_surplus[1] -= load["pd"]
+        end
+    end
+
+    # add gen pgs from master to correponding entries in power_surplus
+    for gen_id in axes(master_var_vals[:pg],1)
+        gen = ref(pm, nw, :gen, gen_id)
+        gen_bus_id = gen["gen_bus"]
+        if gen_bus_id != ref_bus_id
+            power_surplus[bus_to_col[gen_bus_id]] += master_var_vals[:pg][gen_id]
+        else
+            power_surplus[1] += master_var_vals[:pg][gen_id]
+        end
+    end
+
+    return A, power_surplus, bus_to_col
+end
+
 "wrapper for build_base_pf_matrix with busbar components"
 function build_base_pf_matrix(pm::AbstractPowerModel, components::Vector{BBComponent}, detached_components::Vector{BBComponent}; nw::Int64=nw_id_default)
     bus_to_col::Vector{Int64}=fill(typemin(Int64), length(ref(pm, nw, :bus)))
@@ -64,16 +192,15 @@ function build_base_pf_matrix(pm::AbstractPowerModel, components::Vector{BBCompo
         end
     end
 
-    # Busbar updates apply changes relative to the original topology.
-    return build_base_pf_matrix(pm, nw=nw, n_cols=col_counter, bus_to_col=bus_to_col, components=components, only_active=true)
+    return build_base_pf_matrix(pm, nw=nw, n_cols=col_counter, bus_to_col=bus_to_col, components=components)
 end
 
 "returns matrix `A`, vector `power_surplus` such that A * va = power_surplus, where vaᵤ is the voltage angle at bus u with all branches switched on/in their default position and all generators producing nothing,
  as well as vector `bus_to_col` such that the bus u corresponds to column `bus_to_col[u]` in `A`"
-function build_base_pf_matrix(pm::AbstractPowerModel; nw::Int64=nw_id_default, n_cols = length(ref(pm, nw, :bus)), bus_to_col::Vector{Int64}=zeros(Int64, length(ref(pm, nw, :bus))), components::Vector{BBComponent}=Vector{BBComponent}(), only_active::Bool=false)
+function build_base_pf_matrix(pm::AbstractPowerModel; nw::Int64=nw_id_default, n_cols = length(ref(pm, nw, :bus)), bus_to_col::Vector{Int64}=zeros(Int64, length(ref(pm, nw, :bus))), components::Vector{BBComponent}=Vector{BBComponent}())
     buses    = ref(pm, nw, :bus)
     branches = ref(pm, nw, :branch)
-    connected_branchess = get_connected_branchess(pm, only_active=only_active, nw=nw)
+    connected_branchess = get_connected_branchess(pm, only_active=false, nw=nw)
 
     # get number of branches (only "true" branches, no breakers and couplers)
     n_branches = Int64(round(sum([length(c_branches) for c_branches in Base.values(connected_branchess)])/2))
@@ -367,7 +494,7 @@ function _apply_master_vals!(A::SparseArrays.SparseMatrixCSC{Float64, Int64}, pm
         end
     end
 
-    gens && _apply_master_trafo_deltas!(power_surplus, pm, bus_to_col, master_var_vals, apply_func_z_branch, apply_func_pg, nw=nw)
+    _apply_master_trafo_vals!(power_surplus, pm, bus_to_col, master_var_vals, apply_func_z_branch, apply_func_z_branch, nw=nw)
     return A, power_surplus
 end
 
@@ -383,7 +510,7 @@ function _apply_master_vals!(L::SparseArrays.SparseMatrixCSC{Float64, Int64}, U:
         end
     end
 
-    _apply_master_trafo_deltas!(power_surplus, pm, bus_to_col, master_var_vals, apply_func_z_branch, apply_func_pg, nw=nw)
+    _apply_master_trafo_vals!(power_surplus, pm, bus_to_col, master_var_vals, apply_func_z_branch, apply_func_z_branch, nw=nw)
     return L, U, power_surplus
 end
 
@@ -450,20 +577,6 @@ function _apply_master_trafo_vals!(power_surplus::Vector{Float64}, pm::AbstractP
 
         end
 end
-
-"updates transformer injections relative to the fixed shifts already present in the base RHS"
-function _apply_master_trafo_deltas!(power_surplus::Vector{Float64}, pm::AbstractPowerModel, bus_to_col::Vector{Int64}, master_var_vals, f_func::Function, t_func::Function; nw::Int64=nw_id_default)
-    for (_, branch) in ref(pm, nw, :branch)::Dict{Int64, Any}
-        is_branch_electrical(branch) || continue
-
-        base_shift = !is_branch_shiftable(branch) && branch["status"] == 1 ? branch["shift"] : 0.0
-        is_on = is_branch_switchable(branch) ? master_var_vals[:z_branch][branch["index"]] > 0.5 : branch["status"] == 1
-
-        shift = (is_on ? get_transformer_shift_master(branch, master_var_vals) : 0.0) - base_shift
-
-        iszero(shift) || _apply_trafo_val!(power_surplus, branch, bus_to_col, shift, f_func, t_func)
-    end
-end
 "applies the master var trafo values to the solver's LEQ (by applying the shifts to its `power_surplus`)"
 function apply_master_trafo_vals!(power_surplus::Vector{Float64}, pm::AbstractPowerModel, bus_to_col::Vector{Int64}, master_var_vals; nw::Int64=nw_id_default)
     _apply_master_trafo_vals!(power_surplus, pm, bus_to_col, master_var_vals, -, +, nw=nw)
@@ -496,6 +609,7 @@ end
 "applies values of the current master solution to `A` & `power_surplus`"
 function apply_master_vals!(A::SparseArrays.SparseMatrixCSC{Float64, Int64}, pm::AbstractPowerModel, power_surplus::Vector{Float64}, bus_to_col::Vector{Int64}, master_var_vals; nw::Int64=nw_id_default, gens=true)::Tuple{SparseArrays.SparseMatrixCSC{Float64, Int64}, Vector{Float64}}
     _apply_master_vals!(A, pm, power_surplus, bus_to_col, master_var_vals, -, +, nw=nw, gens=gens)
+    apply_master_trafo_vals!(power_surplus, pm, bus_to_col, master_var_vals, nw=nw)
 
     return A, power_surplus
 end
@@ -503,6 +617,7 @@ end
 "resets values of the current master solution applied to `A` & `power_surplus`"
 function reset_master_vals!(A::SparseArrays.SparseMatrixCSC{Float64, Int64}, pm::AbstractPowerModel, power_surplus::Vector{Float64}, bus_to_col::Vector{Int64}, master_var_vals; nw::Int64=nw_id_default, gens=true)::Tuple{SparseArrays.SparseMatrixCSC{Float64, Int64}, Vector{Float64}}
     _apply_master_vals!(A, pm, power_surplus, bus_to_col, master_var_vals, +, -, nw=nw, gens=gens)
+    reset_master_trafo_vals!(power_surplus, pm, bus_to_col, master_var_vals, nw=nw)
 
     return A, power_surplus
 end
@@ -510,6 +625,7 @@ end
 "applies values of the current master solution to the factorization `LU` & `power_surplus`"
 function apply_master_vals!(L::SparseArrays.SparseMatrixCSC{Float64, Int64}, U::SparseArrays.SparseMatrixCSC{Float64, Int64}, pm::AbstractPowerModel, power_surplus::Vector{Float64}, bus_to_col::Vector{Int64}, master_var_vals, row_perm::Vector{Int64}, col_perm::Vector{Int64}, row_scaling::Vector{Float64}; nw::Int64=nw_id_default, gens=true)::Tuple{SparseArrays.SparseMatrixCSC{Float64, Int64}, SparseArrays.SparseMatrixCSC{Float64, Int64}, Vector{Float64}}
     _apply_master_vals!(L, U, pm, power_surplus, bus_to_col, master_var_vals, -, +, row_perm, col_perm, row_scaling, nw=nw)
+    apply_master_trafo_vals!(power_surplus, pm, bus_to_col, master_var_vals, nw=nw)
 
     return L, U, power_surplus
 end
@@ -517,14 +633,15 @@ end
 "resets values of the current master solution applied to to the factorization `LU` & `power_surplus`"
 function reset_master_vals!(L::SparseArrays.SparseMatrixCSC{Float64, Int64}, U::SparseArrays.SparseMatrixCSC{Float64, Int64}, pm::AbstractPowerModel, power_surplus::Vector{Float64}, bus_to_col::Vector{Int64}, master_var_vals, row_perm::Vector{Int64}, col_perm::Vector{Int64}, row_scaling::Vector{Float64}; nw::Int64=nw_id_default, gens=true)::Tuple{SparseArrays.SparseMatrixCSC{Float64, Int64}, SparseArrays.SparseMatrixCSC{Float64, Int64}, Vector{Float64}}
     _apply_master_vals!(L, U, pm, power_surplus, bus_to_col, master_var_vals, +, -, row_perm, col_perm, row_scaling, nw=nw)
+    reset_master_trafo_vals!(power_surplus, pm, bus_to_col, master_var_vals, nw=nw)
 
     return L, U, power_surplus
 end
 
 ### components ###
-"returns closed lines attached to the component"
-function _get_component_lines(component::BBComponent, pm, off_branches::Vector{Int64}, nw::Int64=nw_id_default)::Vector{Int64}
-    return [branch_id for (branch_id, branch) in ref(pm, nw, :branch) if branch["type"] ∉ ["K", "breaker"] && branch_id ∉ off_branches && (branch["f_bus"] ∈ component.busbar_buses || branch["t_bus"] ∈ component.busbar_buses)]
+"returns lines attached to the component"
+function _get_component_lines(component::BBComponent, pm, nw::Int64=nw_id_default)::Vector{Int64}
+    return [branch_id for (branch_id, branch) in ref(pm, nw, :branch) if branch["type"] ∉ ["K", "breaker"] && (branch["f_bus"] ∈ component.busbar_buses || branch["t_bus"] ∈ component.busbar_buses)]
 end
 
 "calculates connected components within each substation"
@@ -558,7 +675,7 @@ function calc_full_busbar_components(pm, off_branches::Vector{Int64}; nw::Int64=
                 
                 component = BBComponent([bus_id],[],[],[],[])
                 
-                component.lines = _get_component_lines(component, pm, off_branches, nw)
+                component.lines = _get_component_lines(component, pm, nw)
                 
                 # detached if no lines (we know there are no breaker branches)
                 if isempty(component.lines)
@@ -619,7 +736,7 @@ function calc_full_busbar_components(pm, off_branches::Vector{Int64}; nw::Int64=
                                     [branch_id for branch_id in visited_branches if "$branch_id" ∈ substation["K"]],
                                     [branch_id for branch_id in visited_branches if "$branch_id" ∉ substation["K"]],
                                     [])
-            component.lines = _get_component_lines(component, pm, off_branches, nw)
+            component.lines = _get_component_lines(component, pm, nw)
 
 
             @assert(length(visited_buses) == length([component.breaker_buses; component.busbar_buses]), "visited buses: $visited_buses, breaker buses: $(component.breaker_buses), busbar buses: $(component.busbar_buses), branch: $branch")
@@ -690,7 +807,7 @@ end
 "increment the position of all following (i.e. with lower position) detached components and delete in detached_components"
 function delete_from_detached_components(component_col::Int64, bus_to_col::Vector{Int64}, detached_components::Vector{BBComponent})
     for (bus_id, other_col) in enumerate(bus_to_col)
-        if typemin(Int64) < other_col < component_col
+        if other_col < component_col
             bus_to_col[bus_id] = other_col + 1
         end
     end
@@ -812,44 +929,6 @@ function add_component_to_matrix(component::BBComponent, components::Vector{BBCo
     return A
 end
 
-"attaches a detached component to or detaches a component without branches in the matrix from `A`"
-function _move_component!(component::BBComponent, attach::Bool, components::Vector{BBComponent}, detached_components::Vector{BBComponent}, bus_to_col::Vector{Int64}, branch_to_comp::Dict{Int64, BBComponent}, A::SparseArrays.SparseMatrixCSC{Float64, Int64}, pm::AbstractPowerModel; nw::Int64=nw_id_default)::SparseArrays.SparseMatrixCSC{Float64, Int64}
-    col = bus_to_col[component.busbar_buses[1]]
-    if attach
-        push!(components, component)
-        delete_from_detached_components(col, bus_to_col, detached_components)
-    else
-        push!(detached_components, component)
-        delete_from_components(col, bus_to_col, components)
-        A = delete_matrix_row_and_col(A, col)
-    end
-    return add_component_to_matrix(component, components, detached_components, bus_to_col, branch_to_comp, A, pm; nw=nw, is_detached=!attach)
-end
-
-"removes or adds an outaged line from the correponding component, updates detached component status"
-function update_outage_line!(A::SparseArrays.SparseMatrixCSC{Float64, Int64}, pm::AbstractPowerModel, power_surplus::Vector{Float64}, branch_id::Int64, bus_to_col::Vector{Int64}, components::Vector{BBComponent}, detached_components::Vector{BBComponent}, branch_to_comp::Dict{Int64, BBComponent}, add::Bool; nw::Int64=nw_id_default)::Tuple{SparseArrays.SparseMatrixCSC{Float64, Int64}, Vector{Float64}, Bool}
-    n_components = length(components)
-    for bus_id in get_branch_bus_ids(pm, branch_id, nw=nw)
-        col = bus_to_col[bus_id]
-        if add && -length(detached_components) ≤ col < 0 && bus_id ∈ detached_components[-col].busbar_buses # this must be a busbar detached by the contingency with surplus 0, we detached it earlier
-            A = _move_component!(detached_components[-col], true, components, detached_components, bus_to_col, branch_to_comp, A, pm; nw=nw)
-            power_surplus = [power_surplus; 0.0]
-        end
-
-        # remove line from component
-        col = bus_to_col[bus_id]
-        (col > 0 && bus_id ∈ components[col].busbar_buses) || continue
-        add ? branch_id ∉ components[col].lines && add_line_to_component!(components[col], branch_id, branch_to_comp) : remove_line_from_component!(components[col], branch_id)
-
-        # detach if disconnected and surplus 0
-        if !add && isempty(components[col].breaker_buses) && isempty(components[col].lines) && iszero(power_surplus[col])
-            A = _move_component!(components[col], false, components, detached_components, bus_to_col, branch_to_comp, A, pm; nw=nw)
-            power_surplus = deleteat!(copy(power_surplus), col)
-        end
-    end
-    return A, power_surplus, length(components) != n_components
-end
-
 "applies values of the current master solution to `A`, `power_surplus`, `componentss` and `branch_to_comp`, set reverse=true to revert previously applied changes"
 function _apply_master_vals!(A::SparseArrays.SparseMatrixCSC{Float64, Int64}, pm::AbstractPowerModel, power_surplus::Vector{Float64}, bus_to_col::Vector{Int64}, components::Vector{BBComponent}, detached_components::Vector{BBComponent}, branch_to_comp::Dict{Int64, BBComponent}, master_var_vals, reverse::Bool; nw::Int64=nw_id_default, gens=true)::Tuple{SparseArrays.SparseMatrixCSC{Float64, Int64}, Vector{Float64}}
     # (directly attached lines are handled analogously to breaker branches in the following)
@@ -903,7 +982,7 @@ function _apply_master_vals!(A::SparseArrays.SparseMatrixCSC{Float64, Int64}, pm
                         remove_breaker_branch_from_component!(component, branch_id, breaker_bus_id)
                         
                         col = bus_to_col[busbar_bus_id]
-                        if isempty(component.breaker_buses) && isempty(component.lines)
+                        if isempty(component.breaker_buses)
                             @assert isempty(component.breaker_branches)
                             push!(detached_components, component)
                             
@@ -1149,26 +1228,13 @@ function _apply_master_vals!(A::SparseArrays.SparseMatrixCSC{Float64, Int64}, pm
                         end
 
                     end
-                else # directly attached lines - detached_components are handled analogously to breaker branches
+                else # directly attached lines - no changes in bus_to_col
                     if phase == 1 && isapprox(cur_status, 0, atol=SOLVER_PRECISION)
                         # remove branch from A & remove from component
                         remove_branch!(A, pm, branch_id, bus_to_col, nw=nw)
 
-                        # handle detached components
-                        for bus_id in get_branch_bus_ids(pm, branch_id, nw=nw)
-                            component = components[bus_to_col[bus_id]]
-                            remove_line_from_component!(component, branch_id)
-                            isempty(component.breaker_buses) && isempty(component.lines) && (A = _move_component!(component, false, components, detached_components, bus_to_col, branch_to_comp, A, pm; nw=nw))
-                        end
-
                     elseif phase == 4 && isapprox(cur_status, 1, atol=SOLVER_PRECISION)
                         # add the branch to A & point to in component
-                        
-                        # handle detached components
-                        for bus_id in get_branch_bus_ids(pm, branch_id, nw=nw)
-                            bus_to_col[bus_id] < 0 && (A = _move_component!(detached_components[-bus_to_col[bus_id]], true, components, detached_components, bus_to_col, branch_to_comp, A, pm; nw=nw))
-                            add_line_to_component!(components[bus_to_col[bus_id]], branch_id, branch_to_comp)
-                        end
                         add_branch!(A, pm, branch_id, bus_to_col, nw=nw)
                     end
 

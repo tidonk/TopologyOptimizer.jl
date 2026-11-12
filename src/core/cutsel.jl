@@ -79,29 +79,7 @@ function compute_cut_distances(coeff_matrix::Matrix{Float64}, metric::Symbol)::M
     if dist_metric isa Jaccard || dist_metric isa Hamming
         data = Float64.(abs.(data) .> SOLVER_PRECISION)
     end
-    dist_matrix = Distances.pairwise(dist_metric, data, dims=2)
-    # Sanitize: cosine (and friends) yield NaN for zero-norm rows; replace
-    # non-finite entries so kmedoids/k-means++ seeding (which calls
-    # StatsBase.Weights) does not error out. Two zero-norm rows are
-    # semantically identical (both carry no information) -> distance 0;
-    # a zero-norm row vs any non-zero row is genuinely undefined -> treat
-    # as the max finite distance.
-    bad = .!isfinite.(dist_matrix)
-    if any(bad)
-        finite_vals = dist_matrix[.!bad]
-        max_d = isempty(finite_vals) ? 1.0 : maximum(finite_vals)
-        zero_row = vec(all(abs.(data) .<= SOLVER_PRECISION, dims=1))
-        for j in axes(dist_matrix, 2), i in axes(dist_matrix, 1)
-            if bad[i, j]
-                dist_matrix[i, j] = (zero_row[i] && zero_row[j]) ? 0.0 : max_d
-            end
-        end
-    end
-    # Ensure the diagonal is exactly zero (required by kmedoids).
-    for i in axes(dist_matrix, 1)
-        dist_matrix[i, i] = 0.0
-    end
-    return dist_matrix
+    return Distances.pairwise(dist_metric, data, dims=2)
 end
 
 "select a representative from each cluster (mode: :max_violation or :centroid)."
@@ -172,28 +150,6 @@ function compute_cut_distances_eqfreq(coeff_matrix::Matrix{Float64}; n_bins::Int
     return Distances.pairwise(Jaccard(), permutedims(binned), dims=2)
 end
 
-"base.jl: compute the number of cuts to select based on the limit mode and parameters."
-function get_num_select_cuts(params::Dict{Symbol, Any}, n_cuts::Int, n_total_sps::Int)::Int
-    n = 0
-
-    if params[:LIMIT_MODE] == :abs_num
-        n = min(n_cuts, params[:LIMIT_ABS_NUM])
-
-    elseif params[:LIMIT_MODE] == :rel_num
-        # constant fraction of total subproblems (instance-dependent, iteration-independent)
-        alpha = params[:LIMIT_REL_ALPHA]
-        n = max(1, ceil(Int, alpha * n_total_sps))
-        n = min(n, n_cuts)
-
-    elseif params[:LIMIT_MODE] == :rel_num_per_iter
-        # fraction of violated cuts in this iteration
-        alpha = params[:LIMIT_REL_ITER_ALPHA]
-        n = max(1, ceil(Int, alpha * n_cuts))
-        n = min(n, n_cuts)
-    end
-
-    return n
-end
 
 "select cuts from subproblems based on violation magnitude."
 function select_cuts_by_violation!(subproblem_prio_list::Vector{Dict{Symbol, Any}}, 
@@ -212,9 +168,23 @@ function select_cuts_by_violation!(subproblem_prio_list::Vector{Dict{Symbol, Any
 
     # determine how many cuts to select
     selected = Int[]
-    if params[:LIMIT_MODE] == :abs_num || params[:LIMIT_MODE] == :rel_num || params[:LIMIT_MODE] == :rel_num_per_iter
-        n = get_num_select_cuts(params, length(cons), length(subproblem_prio_list))
+    if params[:LIMIT_MODE] == :abs_num
+        n = min(length(cons), params[:LIMIT_ABS_NUM])
+        selected = perm[1:n]
 
+    elseif params[:LIMIT_MODE] == :rel_num
+        # constant fraction of total subproblems (instance-dependent, iteration-independent)
+        alpha = params[:LIMIT_REL_ALPHA]
+        n_total_sps = length(subproblem_prio_list)
+        n = max(1, ceil(Int, alpha * n_total_sps))
+        n = min(n, length(cons))
+        selected = perm[1:n]
+
+    elseif params[:LIMIT_MODE] == :rel_num_per_iter
+        # fraction of violated cuts in this iteration
+        alpha = params[:LIMIT_REL_ITER_ALPHA]
+        n = max(1, ceil(Int, alpha * length(cons)))
+        n = min(n, length(cons))
         selected = perm[1:n]
 
     elseif params[:LIMIT_MODE] == :pb
@@ -425,51 +395,6 @@ function _aggregate_remaining_cuts!(cuts::Vector{Vector{JuMP.ScalarConstraint}},
     push!(cuts, agg_cut)
     best = remaining[argmax(violations[remaining])]
     push!(c_ids_used, subproblem_ids[best])
-end
-
-"select cuts based on LODF diversity clustering (k-medoids) and then violation on each cluster."
-function select_cuts_by_lodf_diversity!(subproblem_prio_list::Vector{Dict{Symbol, Any}},
-                                   clusters::Vector{Tuple{Int64, Vector{Int64}}}, # medoid + all assignments
-                                   subproblem_ids::Vector{Int64},
-                                   cons::Vector{Vector{JuMP.ScalarConstraint}},
-                                   violations::Vector{Float64};
-                                   params::Dict{Symbol, Any},
-                                   plot_html::Union{String, Nothing}=nothing
-                                   )::Tuple{Vector{Vector{JuMP.ScalarConstraint}}, Vector{Int64}}
-
-    cuts = Vector{Vector{JuMP.ScalarConstraint}}()
-    c_ids_used = Vector{Int64}()
-    
-    if length(cons) <= 1
-        return cons, subproblem_ids
-    end
-
-    # Sort the assignments of each cluster (second element) by violation, medoid always first
-    clusters = [(cid, [spid for spid in subproblems if spid in subproblem_ids]) for (cid, subproblems) in clusters]
-    clusters = [(cid, sort(subproblems, by=i -> violations[findfirst(x->x==i, subproblem_ids)], rev=true)) for (cid, subproblems) in clusters]
-
-    n_cuts = get_num_select_cuts(params, length(cons), length(subproblem_prio_list))
-
-    selected = Int[]
-    i = 1
-    while length(selected) < n_cuts
-        # Collect clusters that still have an i-th element
-        candidates = [(violations[findfirst(x->x==sps[i], subproblem_ids)], sps[i]) for (_, sps) in clusters if length(sps) >= i]
-        isempty(candidates) && break
-        # Add candidates in descending order of violation
-        for (_, idx) in sort(candidates, by=first, rev=true)
-            length(selected) >= n_cuts && break
-            push!(selected, idx)
-        end
-        i += 1
-    end
-
-    for idx in selected
-        push!(cuts, cons[findfirst(x->x==idx, subproblem_ids)])
-        push!(c_ids_used, idx)
-    end
-
-    return cuts, c_ids_used
 end
 
 "select cuts based on diversity using clustering (DBSCAN or k-medoids)."
@@ -726,8 +651,7 @@ function select_cuts_hybrid!(subproblem_prio_list::Vector{Dict{Symbol, Any}},
 end
 
 "dispatch cut selection: feasibility-first guard, then method-specific selection."
-function select_cuts!(data,
-                     subproblem_prio_list::Vector{Dict{Symbol, Any}}, 
+function select_cuts!(subproblem_prio_list::Vector{Dict{Symbol, Any}}, 
                      subproblem_ids::Vector{Int64},
                      cons::Vector{Vector{JuMP.ScalarConstraint}},
                      violations::Vector{Float64},
@@ -735,9 +659,6 @@ function select_cuts!(data,
                      cut_types::Vector{Symbol}=Symbol[];
                      n_callbacks::Int=0,
                     )::Tuple{Vector{Vector{JuMP.ScalarConstraint}}, Int, Int, Float64}
-
-    # the prio list is sorted by priority, so look up subproblem entries by contingency id instead of by position
-    prio_entry = Dict(entry[:contingency_id] => entry for entry in subproblem_prio_list)
 
     # if FEASCUT_INF_VIOL is enabled, boost feasibility cut violations to Inf
     # so they sort to the top during normal selection (also adding opt cuts).
@@ -764,10 +685,10 @@ function select_cuts!(data,
             @debug("FEASCUT_ONLY: selected $(n_feas) feasibility cuts, skipping $(length(cons) - n_feas) optimality cuts.")
             # update which cuts will actually be used
             for c_id in c_ids_used
-                prio_entry[c_id][:n_cuts_used] += 1
+                subproblem_prio_list[c_id][:n_cuts_used] += 1
                 violation = violations[findfirst(x->x == c_id, subproblem_ids)]
                 if violation < Inf
-                    prio_entry[c_id][:sum_violations] += violation
+                    subproblem_prio_list[c_id][:sum_violations] += violation
                 end
             end
             return (cuts, n_feas, n_opt, sum(v for v in selected_viols if v < Inf; init=0.0))
@@ -787,15 +708,8 @@ function select_cuts!(data,
             plot_html = PARAMS[:BENDERS][:CUTS][:SELECTION][:PLOT_HTML]
         end
 
-        # fallback to normal violation if no cluster data exists (e.g. while warmstarting)
-        if method == :LODF_DIVERSITY && !haskey(data, :sp_clusters)
-            method = :VIOLATION
-        end
-
         if method == :VIOLATION
             cuts, c_ids_used = select_cuts_by_violation!(subproblem_prio_list, subproblem_ids, cons, violations, cb_data, params=method_params)
-        elseif method == :LODF_DIVERSITY
-            cuts, c_ids_used = select_cuts_by_lodf_diversity!(subproblem_prio_list, data[:sp_clusters], subproblem_ids, cons, violations, params=method_params)
         elseif method == :VIOLATION_AGG
             cuts, c_ids_used = select_cuts_by_violation_agg!(subproblem_prio_list, subproblem_ids, cons, violations, cb_data, params=method_params)
         elseif method == :RANDOM
@@ -852,11 +766,11 @@ function select_cuts!(data,
     n_feas_selected = 0
     n_opt_selected = 0
     for c_id in c_ids_used
-        prio_entry[c_id][:n_cuts_used] += 1
+        subproblem_prio_list[c_id][:n_cuts_used] += 1
         idx = findfirst(x->x == c_id, subproblem_ids)
         violation = violations[idx]
         if violation < Inf
-            prio_entry[c_id][:sum_violations] += violation
+            subproblem_prio_list[c_id][:sum_violations] += violation
             sum_selected_violations += violation
         end
         if !isempty(cut_types) && cut_types[idx] == :Feasibility

@@ -27,11 +27,13 @@
 # - the network will be maintained as one connected component (i.e. at least n-1 edges)
 #
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 ""
 function solve_ots(file, model_type::Type, optimizer; kwargs...)
     return solve_model(file, model_type, optimizer, build_ots; ref_extensions=[ref_add_on_off_va_bounds!], kwargs...)
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 ""
 function build_ots(pm::AbstractPowerModel)
     variable_branch_indicator(pm, relax=false)
@@ -70,6 +72,7 @@ function build_ots(pm::AbstractPowerModel)
 end
 
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 ""
 function ref_add_on_off_va_bounds!(ref::Dict{Symbol,<:Any}, data::Dict{String,<:Any})
     apply_pm!(_ref_add_on_off_va_bounds!, ref, data)
@@ -88,6 +91,7 @@ function calc_p_bound(data::Dict{String,<:Any})
     return p_max
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 ""
 function _ref_add_on_off_va_bounds!(ref::Dict{Symbol,<:Any}, data::Dict{String,<:Any})
     if ! haskey(ref, :off_angmin) || ! haskey(ref, :off_angmax)

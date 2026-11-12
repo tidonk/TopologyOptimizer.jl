@@ -523,271 +523,32 @@ function print_slack_values(casename, data, result, slack_types)
     end
 end
 
-"performs LODF-based k-medoids clustering for the contingencies, returns the result"
-function contingency_kmedoids(nw_data, contingency_candidates, n_medoids::Int64, dist_metric)
-    # compute LODF matrix
-    LODF = compute_LODF(nw_data)
 
-    return contingency_kmedoids(nw_data, LODF, contingency_candidates, n_medoids, dist_metric)
-end
-
-"performs LODF-based k-medoids clustering for the contingencies, returns the result"
-function contingency_kmedoids(nw_data, LODF, contingency_candidates, n_medoids::Int64, dist_metric)
-    LODF_vectors = zeros(Float64, length(contingency_candidates), size(LODF, 2))
-
-    # sum up lodf rows for each branch of a contingency
-    for (idx, contingency) in enumerate(contingency_candidates)
-        branch_ids = contingency[:branch]
-        valid_branch_ids = [b_id for b_id in branch_ids if 1 <= b_id <= size(LODF, 1)]
-        isempty(valid_branch_ids) && continue
-
-        # Compare contingency LODF row vectors to base case (zero vector)
-        for b_id in valid_branch_ids
-            LODF_vectors[idx, :] .+= LODF[b_id, :]
-        end
-        LODF_vectors[idx, :] ./= length(valid_branch_ids)
-    end
-
-    # calculate pairwise distances
-    dist_matrix = compute_cut_distances(LODF_vectors, dist_metric)
-
-    return Clustering.kmedoids(dist_matrix, n_medoids)
-end
-
-"diversity based contingency filtering for partial decomposition"
-function get_relevant_contingencies_diversity(nw_data)::Tuple{Vector{Contingency}, Vector{Float64}}
-    contingencies = Vector{Contingency}()
-    violations = Vector{Float64}()
-
-    contingency_candidates = values(nw_data["contingencies"])
-    n_relevant = length(contingency_candidates)
-
-    n_keep = n_master_contingencies(n_relevant)
-
-    if n_relevant > 0 && n_keep > 0
-
-        if n_keep >= n_relevant
-            append!(contingencies, contingency_candidates)
-            append!(violations, fill(1.0, n_relevant))
-            return contingencies, violations
-        end
-
-        dist_metric = PARAMS[:BENDERS][:PARTIAL_DECOMP][:DISTANCE_METRIC]
-
-        clustering = contingency_kmedoids(nw_data, contingency_candidates, n_keep, dist_metric)
-
-        # k-medoids
-        selected_indices = sort(clustering.medoids)
-
-        for idx in selected_indices
-            push!(contingencies, contingency_candidates[idx])
-            push!(violations, 1.0)
-        end
-    end
-
-    return contingencies, violations
-end
-
-
-"true if the partial decomposition mode derives contingency relevance from a solution instead of from the network structure"
-function partial_decomp_needs_solution()::Bool
-    mode = PARAMS[:BENDERS][:PARTIAL_DECOMP][:MODE]
-    mode == :OVERLOAD && return true
-    mode == :SW_HEUR  || return false # :DIVERSITY and :RND are structural
-
-    weights = PARAMS[:BENDERS][:PARTIAL_DECOMP][:WEIGHTS]
-    return any(weights[name] > 0 for name in (:SENS, :CONGPROX, :ETA)) # :RND and :FULL are structural
-end
-
-"true if subproblem selection or cut selection uses the LODF based contingency clustering"
-function sp_diversity_clustering_active()::Bool
-    sp_selection = PARAMS[:BENDERS][:PARTIAL][:SORTING_MODE] == :SCORE && PARAMS[:BENDERS][:PARTIAL][:SCORE][:diversity] > 0
-    return sp_selection || PARAMS[:BENDERS][:CUTS][:SELECTION][:METHOD] == :LODF_DIVERSITY
-end
-
-"cap on the number of contingencies whose power flow is kept in the master problem"
-function n_master_contingencies(n_contingencies::Int64)::Int64
-    pct = PARAMS[:BENDERS][:PARTIAL_DECOMP][:N_MAX_CONTINGENCIES_PCT]
-    n_keep_req = pct > 0 ? ceil(Int, pct * n_contingencies) : PARAMS[:BENDERS][:PARTIAL_DECOMP][:N_MAX_CONTINGENCIES]
-    return min(n_keep_req, n_contingencies)
-end
-
-"determine the relevant contingencies, sorted by descending relevance. `result` is only required for modes for which `partial_decomp_needs_solution()` holds"
-function get_relevant_contingencies(data; result=nothing, min_violation = PARAMS[:BENDERS][:PARTIAL_DECOMP][:MIN_VIOLATION])::Vector{Contingency}
-    contingencies = Vector{Contingency}()
-    violations = Vector{Float64}()
-
-    mode = PARAMS[:BENDERS][:PARTIAL_DECOMP][:MODE]
-    needs_solution = partial_decomp_needs_solution()
-
-    if needs_solution && (isnothing(result) || !haskey(result["solution"], "nw"))
-        @warn("Partial decomposition mode $mode derives relevance from a solution, but none is available. Skipping partial decomposition.")
-        return contingencies
-    end
-
-    for timestep in 1:length(data["nw"])
-        nw_data = data["nw"]["$timestep"]
-
-        if mode == :DIVERSITY
-            try
-                timestep_contingencies, timestep_violations = get_relevant_contingencies_diversity(nw_data)
-                append!(contingencies, timestep_contingencies)
-                append!(violations, timestep_violations)
-            catch e
-                @warn("Error while calculating partial decomposition diversity scores: $e.")
-            end
+"get all contingencies that have cost in Benders result"
+function get_relevant_contingencies_from_benders(data, result)::Vector{Contingency}
+    # check all overloaded contingencies
+    contingencies = Set{Contingency}()
+    nws = length(result["solution"]["nw"])
+    for timestep in 1:nws
+        timestep = string(timestep)
+        timestep_data = result["solution"]["nw"][timestep]
+        #log_str *= "\033[3m Time step $timestep\033[0m\n"
+        #max_name_len = maximum([length("$(get_contingency_names(data, data["nw"]["$timestep"]["contingencies"][parse(Int64, c_id)]))") for (c_id, _) ∈ timestep_data["eta"]])
+        #max_id_len   = maximum([length("$c_id") for (c_id, _) ∈ timestep_data["eta"]])
+        if ! haskey(timestep_data, "eta")
             continue
         end
-
-        etas = Dict{String, Any}()
-        if needs_solution
-            timestep_data = result["solution"]["nw"]["$timestep"]
-            if ! haskey(timestep_data, "eta")
-                @warn("Missing solution values, skipping partial decomposition!")
-                continue
-            end
-            etas = timestep_data["eta"]
-        end
-
-        # if SW_HEUR is the indicator for contingency relevance, we need to calculate the scores first
-        if mode == :SW_HEUR
-            calc_and_set_br_sw_heur_scores!(nw_data,
-                                        only_switchable=false,
-                                        set_switchability=false,
-                                        nw_sol=needs_solution ? get(data, "result", result)["solution"]["nw"]["$timestep"] : Dict{String, Any}(),
-                                        params=PARAMS[:BENDERS][:PARTIAL_DECOMP],
-                                        heur_params=PARAMS[:BENDERS][:PARTIAL_DECOMP][:HEUR])
-        end
-
-        branch_data = nw_data["branch"]
-
-        # for each contingency, determine random score, overload (eta) score or (precalculated) switching heuristic score to determine relevance
-        for (c_id, contingency) in enumerate(nw_data["contingencies"])
-            all(isempty, values(contingency)) && continue # base case, never a candidate
-
-            if     mode == :RND
-                push!(contingencies, contingency)
-                push!(violations, rand())
-            elseif mode == :OVERLOAD
-                haskey(etas, "$c_id") || continue
-                eta_val = etas["$c_id"]["η"]
-                if round(eta_val, digits=SOLVER_PRECISION_DIGITS) > 0
-                    push!(contingencies, contingency)
-                    push!(violations, eta_val)
-                end
-            elseif mode == :SW_HEUR
-                violation = 0.0
-                for branch_id in contingency[:branch]
-                    branch = branch_data["$branch_id"]
-                    violation += branch["sw_heur_score"]
-                end
-
-                push!(contingencies, contingency)
-                push!(violations, violation/length(contingency[:branch]))
-            else
-                @assert(false, "Unknown partial decomposition mode $mode (expected one of :RND, :OVERLOAD, :SW_HEUR, :DIVERSITY).")
+        for (c_id, eta_data) in timestep_data["eta"]
+            eta_val = eta_data["η"]
+            if round(eta_val, digits=SOLVER_PRECISION_DIGITS) > 0
+                push!(contingencies, data["nw"]["1"]["contingencies"][parse(Int64, c_id)])
+                #contingency = data["nw"]["$timestep"]["contingencies"][parse(Int64, c_id)]
+                #log_str *= ("  Contingency $(rpad("$(get_contingency_names(data, contingency))", max_name_len, " ")) $(rpad("($c_id)", max_id_len+2, " ")) causes overloads with cost $cost.")
             end
         end
     end
-
-    # sort the contingencies by their violation (eta_val value) in descending order
-    sorted_indices = sortperm(violations, rev=true)
-    contingencies = contingencies[sorted_indices]
-
-    # if min violation given, filter out contingencies with less violation
-    if min_violation > 0 && mode != :DIVERSITY
-        contingencies = [contingency for (i, contingency) in enumerate(contingencies) if violations[sorted_indices[i]] >= min_violation]
-    end
-
-    return contingencies
+    return collect(contingencies)
 end
-
-"cluster the contingencies left to the subproblems by LODF similarity, used by diversity based subproblem and cut selection"
-function compute_sp_diversity_clusters!(nw_data, contingencies_relevant::Vector{Contingency})
-    LODF = zeros(1,1)
-    try
-        LODF = compute_LODF(nw_data)
-    catch e
-        @warn("Error while calculating LODF for subproblem selection diversity cluster: $e.")
-        return
-    end
-
-    # get the remaining contingencies to cluster on; must match the subproblem list built in build_secure_ots_time_benders
-    contingency_candidates = nw_data["contingencies"]
-    n_keep = min(n_master_contingencies(length(contingency_candidates)), length(contingencies_relevant))
-
-    contingencies_sp = n_keep > 0 ? setdiff(contingency_candidates, contingencies_relevant[1:n_keep]) : copy(contingency_candidates)
-
-    n_medoids = min(PARAMS[:BENDERS][:PARTIAL][:SCORE_DIV][:N_MEDOIDS], length(contingencies_sp))
-    n_medoids > 0 || return
-
-    # clustering once, write the result into "sp_clusters"
-    if !PARAMS[:BENDERS][:PARTIAL][:SCORE_DIV][:FULL_MEDOIDS] || PARAMS[:BENDERS][:CUTS][:SELECTION][:METHOD] == :LODF_DIVERSITY
-        clustering = contingency_kmedoids(nw_data, LODF, contingencies_sp, n_medoids, PARAMS[:BENDERS][:PARTIAL][:SCORE_DIV][:DISTANCE_METRIC])
-
-        clusters = [(clustering.medoids[i], Vector{Int64}()) for i in 1:n_medoids]::Vector{Tuple{Int64, Vector{Int64}}}
-
-        for (sp_id, cluster_id) in enumerate(clustering.assignments)
-            push!(clusters[cluster_id][2], sp_id)
-        end
-
-        nw_data["sp_clusters"] = clusters
-
-    # perform clustering iteratively, each time removing the newly found clusters
-    else
-        medoidss = Vector{Vector{Int64}}()
-        initial_indices = [i for i in 1:length(contingencies_sp)]
-
-        while length(contingencies_sp) > n_medoids
-
-            # compute clustering
-            clustering = contingency_kmedoids(nw_data, LODF, contingencies_sp, n_medoids, PARAMS[:BENDERS][:PARTIAL][:SCORE_DIV][:DISTANCE_METRIC])
-
-            medoids = sort!(clustering.medoids, rev=true)
-
-            # add intial indices of medoids to final vector
-            push!(medoidss, initial_indices[medoids])
-
-            # update initial indices: the index of the deleted medoid now points to the next element
-            for medoid_id in medoids
-                for i in medoid_id:(length(contingencies_sp)-1)
-                    initial_indices[i] = initial_indices[i+1]
-                end
-            end
-
-            # delete medoids from contingencies to be considered
-            deleteat!(contingencies_sp, sort!(medoids))
-
-        end
-
-        !isempty(contingencies_sp) && push!(medoidss, initial_indices[1:length(contingencies_sp)])
-
-        nw_data["sp_medoidss"] = medoidss
-    end
-end
-
-"save the relevant contingencies under the timestep-dependent contingencies_relevant field and cluster the remaining ones. Does nothing if already prepared"
-function prepare_contingency_selection!(data; result=nothing)
-    nw_data = data["nw"]["1"]
-    haskey(nw_data, "contingencies_relevant") && return
-
-    # nested Benders keeps no contingency in the master, so it solves all of them as subproblems
-    application = get(data, "application", "")
-    nested = application == "DC_SCOTS_TIME_SLACK_BENDERS_NESTED" || application == "DC_SCOTS_TIME_SLACK_BENDERS_BENDERS"
-
-    # only determine relevance if a contingency (and not just the base case) is actually kept in the master
-    select = PARAMS[:BENDERS][:PARTIAL_DECOMP][:ENABLED] && !nested && n_master_contingencies(length(nw_data["contingencies"])) > 0
-    relevant_contingencies = select ? get_relevant_contingencies(data, result=result) : Vector{Contingency}()
-
-    # TODO: fix for multiple timesteps
-    for (_, timestep_data) in data["nw"]
-        timestep_data["contingencies_relevant"] = relevant_contingencies
-        timestep_data["contingencies_relevant2"] = relevant_contingencies
-    end
-
-    sp_diversity_clustering_active() && compute_sp_diversity_clusters!(nw_data, relevant_contingencies)
-end
-
 
 "get the total cost of all contingencies in Benders result"
 function get_total_cost_of_contingencies(data, result)::Float64
@@ -919,7 +680,6 @@ function check_relevant_overloads_individual(data, result, solver_convex, contin
             #end
         end
     end
-    
     total_cost_compact = sum(total_costs_compact)
 
     # move branch solution data for base power flow into contingency id 1
@@ -946,7 +706,7 @@ end
 
 "check overloads for all contingencies that have cost in Benders result"
 function check_relevant_overloads(data, result, solver_convex; for_validation=false)
-    return check_relevant_overloads(data, result, solver_convex, get_relevant_contingencies(data, result=result), for_validation=for_validation)
+    return check_relevant_overloads(data, result, solver_convex, get_relevant_contingencies_from_benders(data, result), for_validation=for_validation)
 end
 
 "check solution using compact formulation. If base_only, just calculate the power flow."
@@ -957,7 +717,7 @@ function calculate_power_flow!(data, result, solver_convex; base_only=true)
 
     # set the base power flow values
     is_nested = occursin("NESTED", data["application"]) || occursin("BENDERS_BENDERS", data["application"])
-    set_dc_pf_start_values!(data, result["solution"], fix_uc=false, fix_ts=true, fix_benders=false, fix_pf=false, fix_slack=false, fix_tr=true, benders=false)
+    set_dc_pf_start_values!(data, result["solution"], fix_uc=!is_nested, fix_ts=true, fix_benders=false, fix_pf=false, fix_slack=false, fix_tr=true, benders=false)
 
     # remove empty contingency
     if ! PARAMS[:BENDERS][:BASE_PF_IN_MASTER]
@@ -976,8 +736,7 @@ function calculate_power_flow!(data, result, solver_convex; base_only=true)
     PARAMS[:CONTINGENCIES][:SLACK_EQUALS_SEC_SLACK] = false
 
     # solve the power flow to obtain values for branches and buses (non-Benders, without contingencies)
-    result_pf = solve_secure_ots_time(data, DCPPowerModel, solver_convex, weighted_obj_func_factory([objective_min_gen_change, objective_min_num_gen_switch, objective_min_num_tr_switch, objective_min_num_branch_switch, objective_min_redispatch_cost, objective_min_num_redispatch, objective_min_slack_relative_linear, objective_min_num_slacks], [is_nested ? 0 : 100000, data["cost_coeffs"]["gen_sw"], data["cost_coeffs"]["tr_sw"], data["cost_coeffs"]["br_sw"], data["cost_coeffs"]["redispatch"], data["cost_coeffs"]["num_redispatch"], data["cost_coeffs"]["overload"], data["cost_coeffs"]["num_overload"]]), slack_types=data["slack_types"])
-    result["power_flow_solve_time"] = get(result, "power_flow_solve_time", 0.0) + result_pf["solve_time"]
+    result_pf = solve_secure_ots_time(data, DCPPowerModel, solver_convex, weighted_obj_func_factory([objective_min_num_gen_switch, objective_min_num_tr_switch, objective_min_num_branch_switch, objective_min_redispatch_cost, objective_min_num_redispatch, objective_min_slack_relative_linear, objective_min_num_slacks], [data["cost_coeffs"]["gen_sw"], data["cost_coeffs"]["tr_sw"], data["cost_coeffs"]["br_sw"], data["cost_coeffs"]["redispatch"], data["cost_coeffs"]["num_redispatch"], data["cost_coeffs"]["overload"], data["cost_coeffs"]["num_overload"]]), slack_types=data["slack_types"])
     if result_pf["termination_status"] == JuMP.MOI.INFEASIBLE || result_pf["termination_status"] == JuMP.MOI.INFEASIBLE_OR_UNBOUNDED
         @error("Power flow calculation failed: $(result_pf["termination_status"]). Result from main problem run should also have been infeasible!")
         result["termination_status"] = "CUT_ERROR"
@@ -1719,11 +1478,7 @@ function add_solving_data_to_results!(data, result, casename::String; callback_s
 
     if PARAMS[:WARMSTARTING][:ENABLED] && haskey(data, "warmstart_time")
         result["time"]["warmstart"] = data["warmstart_time"]
-        delete!(data, "warmstart_time")
-    end
-
-    if PARAMS[:WARMSTARTING][:ENABLED]
-        result["info"]["n_carried_benders_cuts"] = get(data, "n_carried_benders_cuts", 0)
+        delete!(result, "warmstart_time")
     end
 
     if PARAMS[:LOSS_ESTIMATION][:ESTIMATE_LOSSES]
@@ -1756,9 +1511,6 @@ function add_solving_data_to_results!(data, result, casename::String; callback_s
 
         # all solver runs and failures
         result["callback"]["n_leq_fails"] = callback_stats[:n_leq_fails]
-        result["callback"]["n_leq_residual_failures"] = callback_stats[:n_leq_residual_failures]
-        result["callback"]["n_primal_lp"] = callback_stats[:n_primal_lp]
-        result["callback"]["n_fallback_primal_lp"] = callback_stats[:n_fallback_primal_lp]
         result["callback"]["n_dual_solver"] = callback_stats[:n_dual_solver]
         result["callback"]["n_dual_lp"] = callback_stats[:n_dual_lp]
         result["callback"]["n_questionable_sol"]            = callback_stats[:n_questionable_sol]

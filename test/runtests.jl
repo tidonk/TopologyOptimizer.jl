@@ -43,7 +43,6 @@ include("common.jl")
                     include("dc/benders/dc_scots_benders_leq_rf.jl")
                     include("dc/benders/dc_scots_benders_leq_rf_tal2.jl")
                     include("dc/benders/dc_scots_benders_leq_with_warmstart.jl")
-                    include("dc/benders/dc_scots_benders_partial_eta_no_base.jl")
                 end
 
                 @testset verbose=true "BPF in Subproblem" begin

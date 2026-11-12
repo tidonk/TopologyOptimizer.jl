@@ -39,6 +39,7 @@ function variable_bus_voltage_sec(pm::AbstractACRModel, contingencies::Vector{Co
     end
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 "`vmin <= vm[i] <= vmax`"
 ### Only adds constraint name
 function constraint_voltage_magnitude_bounds(pm::AbstractACRModel, n::Int, i, vmin, vmax)
@@ -60,11 +61,13 @@ function constraint_voltage_magnitude_bounds_sec(pm::AbstractACRModel, n::Int, i
     JuMP.@constraint(pm.model, vmax^2 >= (vr_sec^2 + vi_sec^2), base_name = "$(n)_voltage_magnitude_ub_($(i),$(c))")
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 "reference bus angle constraint"
 function constraint_theta_ref(pm::AbstractACRModel, n::Int, i::Int)
     JuMP.@constraint(pm.model, var(pm, n, :vi)[i] == 0, base_name = "$(n)_theta_ref_$(i)")
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 function constraint_power_balance(pm::AbstractACRModel, n::Int, i::Int, bus_arcs, bus_arcs_dc, bus_arcs_sw, bus_gens, bus_storage, bus_pd, bus_qd, bus_gs, bus_bs)
     vr = var(pm, n, :vr, i)
     vi = var(pm, n, :vi, i)
@@ -200,6 +203,7 @@ function constraint_power_balance_sec(pm::AbstractACRModel, n::Int, i::Int, c::C
     end
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 """
 Creates Ohms constraints (yt post fix indicates that Y and T values are in rectangular form)
 """
@@ -216,6 +220,7 @@ function constraint_ohms_yt_from(pm::AbstractACRModel, n::Int, f_bus, t_bus, f_i
     JuMP.@constraint(pm.model, q_fr == -(b+b_fr)/tm^2*(vr_fr^2 + vi_fr^2) - (-b*tr-g*ti)/tm^2*(vr_fr*vr_to + vi_fr*vi_to) + (-g*tr+b*ti)/tm^2*(vi_fr*vr_to - vr_fr*vi_to), base_name = "$(n)_ohm_fr_q_$(f_idx)")
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 """
 Creates Ohms constraints (yt post fix indicates that Y and T values are in rectangular form)
 """
@@ -262,6 +267,7 @@ function constraint_ohms_yt_to_sec(pm::AbstractACRModel, n::Int, i, c, contingen
     JuMP.@constraint(pm.model, q_to_sec == -(b+b_to)*(vr_to_sec^2 + vi_to_sec^2) - (-b*tr+g*ti)/tm^2*(vr_fr_sec*vr_to_sec + vi_fr_sec*vi_to_sec) + (-g*tr-b*ti)/tm^2*(-(vi_fr_sec*vr_to_sec - vr_fr_sec*vi_to_sec)), base_name = "$(n)_ohm_to_q_sec_$(t_idx)")
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 """
 branch voltage angle difference bounds
 """
@@ -293,6 +299,7 @@ function constraint_voltage_angle_difference_sec(pm::AbstractACRModel, n::Int, c
     JuMP.@constraint(pm.model, (vi_fr_sec*vr_to_sec - vr_fr_sec*vi_to_sec) >= tan(angmin)*(vr_fr_sec*vr_to_sec + vi_fr_sec*vi_to_sec), base_name = "$(n)_vad_lb_sec_$(f_idx)")
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 "variable: `qq[j]` for `j` in `gen`"
 function PowerModels.variable_gen_power_imaginary(pm::ACRPowerModel; nw::Int=nw_id_default, bounded::Bool=true, report::Bool=true)
     qg = var(pm, nw)[:qg] = JuMP.@variable(pm.model,

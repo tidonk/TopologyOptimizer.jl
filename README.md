@@ -1,37 +1,28 @@
-# TopologyOptimizer.jl
+# Fast Subproblem Solving in Benders Decomposition for Affine Potential-Based Flow Problems with Topology Switching and Scenarios
 
-TopologyOptimizer.jl provides compact formulations and Benders decomposition for
-security-constrained optimal transmission switching (SCOTS) and affine
-potential-based flow problems. It builds on
-[PowerModels.jl](https://github.com/lanl-ansi/PowerModels.jl).
-Parts of the software were developed within the InnOpTEM project.
+This repository contains code that can be used to replicate the results in our paper "Fast Subproblem Solving in Benders Decomposition for Affine Potential-Based Flow Problems with Topology Switching and Scenarios".
+While it also contains many other features, the parts relevant for the paper are:
 
-The main features are:
+- Benders decomposition of the security-constrained optimal transmission switching problem (SCOTS), to which any affine potential-based flow problem can be reduced, with
+  - a subproblem plugin system with different subproblem solvers
 
-- SCOTS with direct current (DC) power flow models and busbar reconfiguration.
-- Subproblem solvers based on linear programming, linear equation systems, and
-  factorization updates (`FullLPSolver`, `LinEqSysSolver`, and `LinEqSysRfSolver`).
-- Subproblem selection, Benders cut filtering, partial decomposition, and branch fixing.
-- Heuristic initialization, parallel solution exchange, and subproblem multithreading.
-- Loss estimation and feasibility checks using alternating current power flow models.
+    - "classical", i.e. as LP with Gurobi (`FullLPSolver` in repo, `GRB` in paper),
+    - as systems of linear equations (`LinEqSysSolver`, `SLE`),
+    - as linear equation systems with factorization updates (`LinEqSysRfSolver`, `SLE-U`)
 
-## Publications and branches
+For further explanation of these, we refer to the paper. The repository is organized as follows:
 
-| Paper | Branch | Tag |
-| --- | --- | --- |
-| Integrated Topology and Redispatch Optimization of Real-World Power Transmission Systems using Branch-and-Benders-Cut | `paper/integrated` | `integrated-2026-11-10` |
-| Benders Cut Filtering for Affine Potential-Based Flow Problems with Robustness Scenarios and Topology Switching | `paper/cut_selection` | `cut_selection-2026-11-10` |
-| Fast Subproblem Solving in Benders Decomposition for Affine Potential-Based Flow Problems with Topology Switching and Scenarios | `paper/subproblem_solving` | `subproblem_solving-546be08` |
+ - [src](src) contains the source code for solving software
+ - [check/instances/main](check/instances/main) contains all instances used for the evaluation of the paper
+ - [check/scripts](check/scripts) contains scripts used to execute and visualize the experiments (see below)
 
-`paper/integrated` uses the same solver implementation as `main` and adds
-experiment settings, reproduction scripts, and exporters for the accompanying
-paper. The other paper branches retain their evaluated solver versions.
-Each branch has its paper citation in `CITATION.cff`.
+Note that the contents of this repository were partially developed as part of the project "InnOpTEM" to cover a wider range of features.
+While we removed most of what is not directly related to the publication, there might still remain some parts that are not relevant here.
 
 ## Installation
 
-Use Julia 1.12.6 and a valid Gurobi license. The pinned dependencies on `main`
-include Gurobi 13.0.2. The implementation uses Gurobi's callback interface.
+Use Julia 1.12.6 and a valid Gurobi license. The pinned dependencies on `paper/subproblem_solving`
+include Gurobi 13.0.0. The implementation uses Gurobi's callback interface.
 Make sure that `julia --version` reports the intended Julia version; use the full
 path to the executable if another version is on your search path.
 
@@ -47,7 +38,14 @@ run with the same Julia depot. The first installation and compilation can take
 several minutes. Package precompilation includes the bundled IEEE 118 example,
 so the Gurobi license must already be available. No submodules are required.
 
-## Run the bundled example
+For the evaluation figures and tables, use Python 3.12, LaTeX, and the
+Python packages listed in `check/scripts/visu/requirements.txt`:
+
+```sh
+pip install -r check/scripts/visu/requirements.txt
+```
+
+## Manual Execution
 
 From the repository root:
 
@@ -61,58 +59,64 @@ with [settings/default.toml](settings/default.toml). This is the modified IEEE 1
 example with busbar data. The script prints the solution status, objective, and
 number of switching actions. Solver logs are written under `check/results/logs/`.
 
-The default configuration is Branch Fixing (row 7 of the accompanying paper's main
-evaluation), with switching limit 1 and a solve limit of three hours.
+You can specify the path to the case file, and the "application" that is executed.
+The application specifies the problem that is solved and the algorithm that is used to solve it.
+Relevant to the publication is:
 
-## Settings and other instances
+- `DC_SCOTS_TIME_SLACK_BENDERS` - Benders decomposition
 
-The configuration is in [settings/default.toml](settings/default.toml).
-To use different settings, copy this file and pass the new path as `params_file`.
-The default values are loaded first, followed by any overrides in that file.
-The numbered experiment settings are on `paper/integrated`.
+Additionally, a path to a settings file can be provided via the `params_file` argument.
+The default settings can be found under [settings/default.toml](settings/default.toml).
+This includes for example the subproblem solver that is used.
+Custom settings can be added by copying the file and altering it as desired.
+We provide a settings file for each of the experiment runs in the [settings](settings) folder.
 
-The two main application identifiers are:
+## Reproducing the Experiments
+Experiments are performed on instances synthesized from [pglib-opf](https://github.com/power-grid-lib/pglib-opf).
+These can be found under [check/instances/main](check/instances/main).
+The experiments in the paper were scheduled using a dispatch script for HTCondor (which likely won't work on your machine) in the command line
 
-| Application | Formulation |
-| --- | --- |
-| `DC_SCOTS_TIME_SLACK` | Compact DC SCOTS formulation |
-| `DC_SCOTS_TIME_SLACK_BENDERS` | Benders decomposition |
-
-For example, from Julia started with `julia --project=.` in the repository root:
-
-```julia
-using TopologyOptimizer
-
-result = TopologyOptimizer.main(
-    "check/instances/main/pglib_scopf_case85.m";
-    params_file = "settings/default.toml",
-    busbars = false,
-    timesteps = 1,
-    slack_types = [:ratea],
-    plot = false,
-)
-display(result["info"])
+```bash
+./check/scripts/cluster/dispatch_testset.sh --settings settings/subproblem_solving --experiment_name subproblem_solving
 ```
 
-Use `busbars = false` for the paper instances in `check/instances/main/` and
-`check/instances/grid/`, as in the reproduction scripts. The IEEE example in
-`Main.jl` retains the default `busbars = true`. Busbar reconfiguration itself is
-disabled in `settings/default.toml`.
+where the directory [settings/subproblem_solving](settings/subproblem_solving) contains the settings files corresponding to the different subproblem solvers evaluated in the paper.
+Alternatively, you can use the local dispatch script
 
-## Instances
+```bash
+./check/scripts/local/dispatch_smallest.sh --n 10 --settings settings/subproblem_solving --experiment_name subproblem_solving
+```
 
-`main` contains the union of 132 cases from the testsets of the accompanying paper
-and the cut filtering paper in `check/instances/main/`. The paper branches retain
-their exact sets: 130 cases for `paper/integrated`, 131 for `paper/cut_selection`,
-and 174 for `paper/subproblem_solving`.
-Every branch also includes the 31 grid instances in `check/instances/grid/` and
-seven IEEE test cases under `check/instances/test/`.
+to run the n (here 10) smallest instances sequentially on your local machine.
+The dispatch scripts use the file [check/scripts/cluster/solve_instance.jl](check/scripts/cluster/solve_instance.jl) to execute the solving process.
 
-Use the corresponding paper branch or tag for reproduction and follow its
-instructions. On `paper/integrated`, `check/scripts/publication/README.md` describes
-the main and practical evaluations. On `paper/cut_selection`, use
-`check/scripts/reproduce_cutfiltering.py`. The `paper/subproblem_solving` README
-covers its local and cluster execution scripts and figure generation.
+We use machines with 2 Intel Xeon L5630 quad-core processors at 2.13 GHz (8 cores, 16 GB RAM) on Debian GNU/Linux 11 across all experiments.
+A three-hour time limit is imposed per instance (via the settings files).
+
+## Reproducing Figures & Tables
+
+All scripts used to build the figures and tables in the paper can be found under `check/scripts/visu/`.
+With output files placed in the folder `check/results/<experiment>`, execute
+
+```bash
+python check/scripts/visu/compare.py <experiment>
+```
+All output files are placed in the same folder.
+The results in the paper match to the files here as follows:
+
+| Paper                            | Files |
+| -------------------------------- | --- |
+| Table 1                          | `comparison_short.md` |
+| Figure 4a                        | `time_decomp_boxplot/detailed_relative.tikz` |
+| Figure 4b                        | `time_decomp_boxplot/detailed.tikz` |
+| Figure 5                         | `performance_profiles/total/factor.tikz` |
+| Figure 6                         | `performance_profiles/SP/factor.tikz` |
+| Figure 7                         | `performance_profiles/solve_time/factor.tikz` |
+| Figure 8a                        | `performance_profiles/solve_time_scaled/factor.tikz` |
+| Figure 8b                        | `performance_profiles/solve_time_scaled/scatter_sorted_by_sle_runtime.tikz` |
+| Numbers in the text of Section 5 | `time_decomp/table.tex`, `comparison_extra.tex`, `comparison_short.md`, performance profile files |
+
+Experiment results and historical logs are not included.
 
 ## Citation
 

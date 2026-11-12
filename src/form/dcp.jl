@@ -35,6 +35,7 @@ function constraint_voltage_angle_difference_slack(pm::AbstractDCPModel, n::Int,
     JuMP.@constraint(pm.model, va_fr - va_to >= angmin - vad_slack_lower, base_name = "$(n)_vad_slack_lb_$(i)")
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 "`angmin*z_branch[i] + vad_min*(1-z_branch[i]) <= t[f_bus] - t[t_bus] <= angmax*z_branch[i] + vad_max*(1-z_branch[i])`"
 function constraint_voltage_angle_difference_on_off(pm::AbstractDCPModel, n::Int, f_idx, angmin, angmax, vad_min, vad_max)
     i, f_bus, t_bus = f_idx
@@ -151,6 +152,11 @@ end
 ""
 function variable_bus_voltage_sec_on_off(pm::AbstractDCPModel, contingencies::Vector{Contingency}; kwargs...)
     variable_bus_voltage_angle_sec(pm, contingencies; kwargs...)
+end
+
+""
+function variable_bus_voltage_sec_complete_on_off(pm::AbstractDCPModel, contingencies::Vector{Contingency}; kwargs...)
+    variable_bus_voltage_angle_sec_complete(pm, contingencies; kwargs...)
 end
 
 "do nothing, this model does not have complex voltage variables"
@@ -343,6 +349,7 @@ function variable_gen_power_imaginary_slack_on_off(pm::AbstractDCPModel; nw::Int
     # no reactive power in this model
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 """
 Creates Ohms constraints (yt post fix indicates that Y and T values are in rectangular form)
 
@@ -362,6 +369,7 @@ function constraint_ohms_yt_from(pm::AbstractDCPModel, n::Int, f_bus, t_bus, f_i
     # omit reactive constraint
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 "`-b*(t[f_bus] - t[t_bus] + vad_min*(1-z_branch[i])) <= p[f_idx] <= -b*(t[f_bus] - t[t_bus] + vad_max*(1-z_branch[i]))`"
 function constraint_ohms_yt_from_on_off(pm::AbstractDCPModel, n::Int, i, f_bus, t_bus, f_idx, t_idx, g, b, g_fr, b_fr, tr, ti, tm, vad_min, vad_max)
     p_fr  = var(pm, n,  :p, f_idx)
@@ -384,11 +392,13 @@ function constraint_ohms_yt_from_on_off(pm::AbstractDCPModel, n::Int, i, f_bus, 
     end
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 "nothing to do, this model is symmetric"
 function constraint_ohms_yt_to(pm::AbstractDCPModel, n::Int, f_bus, t_bus, f_idx, t_idx, g, b, g_to, b_to, tr, ti, tm)
 end
 
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 "nothing to do, this model is symmetric"
 function constraint_ohms_yt_to_on_off(pm::AbstractDCPModel, n::Int, i, f_bus, t_bus, f_idx, t_idx, g, b, g_to, b_to, tr, ti, tm, vad_min, vad_max)
 end

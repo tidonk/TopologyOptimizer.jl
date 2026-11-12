@@ -141,6 +141,7 @@ function remove_duplicate_ref_buses(data)
 
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 ""
 function solve_model(data::Dict{String,<:Any}, model_type::Type, optimizer, build_method;
         ref_extensions=[], solution_processors=[], relax_integrality=false,
@@ -193,9 +194,7 @@ function solve_model(data::Dict{String,<:Any}, model_type::Type, optimizer, buil
     
     start_time = time()
     #JuMP.set_start_values(pm.model, variable_primal_start=(x -> JuMP.value(x))) # not required, since solver env stays the same
-    parallel_solve_start!(pm)
     result = optimize_model!(pm, relax_integrality=relax_integrality, optimizer=optimizer, solution_processors=solution_processors)
-    parallel_solve_finish!(pm)
     Memento.debug(_LOGGER, "pm model solve and solution time: $(time() - start_time)")
 
     if PARAMS[:WRITING][:PRESOLVED] 
@@ -210,12 +209,10 @@ function solve_model(data::Dict{String,<:Any}, model_type::Type, optimizer, buil
             iis_model, _ = JuMP.copy_conflict(pm.model)
             print(iis_model)
             if PARAMS[:WRITING][:IIS]
-                conflict_model_file = "$(pm.data["name"])_$(pm.data["application"])_conflict_model.lp"
                 if occursin("BENDERS", pm.data["application"])
                     JuMP.MOI.set(iis_model, Gurobi.CallbackFunction(), nothing)
                 end
-                @info("Conflict model written to $(conflict_model_file)")
-                JuMP.write_to_file(iis_model, conflict_model_file)
+                JuMP.write_to_file(iis_model, "conflict_model.lp")
             end
         end
     end

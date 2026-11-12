@@ -191,6 +191,17 @@ function constraint_gen_slack_sec_imaginary(pm::AbstractACPModel, n::Int, i::Int
     JuMP.@constraint(pm.model, qg_sec[(i,c)] >= qmin - qmin_slack[i])
 end
 
+"variable: `pg_delta_percentage_slack[j]` for `j` in `gen`"
+function variable_pg_delta_percentage_slack_on_off(pm::AbstractPowerModel; nw::Int=nw_id_default, report::Bool=true)
+    pg_delta_percentage_slack_on_off = var(pm, nw)[:pg_delta_percentage_slack_on_off] = JuMP.@variable(pm.model,
+        [i in ids(pm, nw, :gen)], base_name="$(nw)_pg_delta_percentage_slack_on_off",
+        binary = true,
+        start = 0
+    )
+
+    report && sol_component_value(pm, nw, :gen, :pg_delta_percentage_slack_on_off, ids(pm, nw, :gen), pg_delta_percentage_slack_on_off)
+end
+
 "variable: `qq[j]` for `j` in `gen`"
 function variable_gen_power_imaginary_slack_on_off(pm::AbstractACPModel; nw::Int=nw_id_default, bounded::Bool=true, report::Bool=true)
     qmin_slack_on_off = var(pm, nw)[:qmin_slack_on_off] = JuMP.@variable(pm.model,
@@ -364,6 +375,7 @@ function constraint_bus_voltage_magnitude_slack_sec(pm::AbstractACPModel, n::Int
     JuMP.@constraint(pm.model, vm_sec[(i,c)] >= vmin - vm_slack_lower[i])
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 ""
 function constraint_power_balance(pm::AbstractACPModel, n::Int, i::Int, bus_arcs, bus_arcs_dc, bus_arcs_sw, bus_gens, bus_storage, bus_pd, bus_qd, bus_gs, bus_bs)
     vm   = var(pm, n, :vm, i)
@@ -466,6 +478,7 @@ function constraint_power_balance(pm::AbstractACPModel, n::Int, i::Int, bus_arcs
     end
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 """
 Creates Ohms constraints (yt post fix indicates that Y and T values are in rectangular form)
 
@@ -486,6 +499,7 @@ function constraint_ohms_yt_from(pm::AbstractACPModel, n::Int, f_bus, t_bus, f_i
     JuMP.@NLconstraint(pm.model, q_fr == -(b+b_fr)/tm^2*vm_fr^2 - (-b*tr-g*ti)/tm^2*(vm_fr*vm_to*cos(va_fr-va_to)) + (-g*tr+b*ti)/tm^2*(vm_fr*vm_to*sin(va_fr-va_to)) )
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 """
 Creates Ohms constraints (yt post fix indicates that Y and T values are in rectangular form)
 

@@ -64,9 +64,6 @@ function create_master_problem!(pm::AbstractPowerModel, contingencies::Vector{Co
     end
     if haskey(pm.data, "_TimeLimit")
         standard_params["TimeLimit"] = pm.data["_TimeLimit"]
-    elseif get(PARAMS[:SOLVER], :INCLUDE_WARMSTART_TIME_LIMIT, false)
-        standard_params["TimeLimit"] = max(0.0, standard_params["TimeLimit"] - get(pm.data, "warmstart_time", 0.0))
-        pm.data["main_time_limit"] = standard_params["TimeLimit"]
     end
     if haskey(pm.data, "_BestObjStop")
         standard_params["BestObjStop"] = pm.data["_BestObjStop"]
@@ -77,8 +74,8 @@ function create_master_problem!(pm::AbstractPowerModel, contingencies::Vector{Co
     
     JuMP.set_optimizer(pm.model, optimizer_with_attributes(() -> Gurobi.Optimizer(gurobi_master_env), standard_params..., ))
 
-    # build master problem (contingency PFs come from ref(pm, t, :contingencies); empty when partial decomp disabled or caps = 0)
-    build_secure_ots_time(pm, with_base_pf=PARAMS[:BENDERS][:BASE_PF_IN_MASTER])
+    # build master problem
+    build_secure_ots_time(pm, with_pf=PARAMS[:BENDERS][:BASE_PF_IN_MASTER])
 
     # add variable for Benders
     eta_start = haskey(ref(pm, nw), :η) ? ref(pm, nw, :η) : Dict(c => Dict("contingency" => contingency, "η_start" => 0.0) for (c, contingency) in enumerate(contingencies))
@@ -98,7 +95,7 @@ function create_master_problem!(pm::AbstractPowerModel, contingencies::Vector{Co
     end
     report && sol_component_value(pm, nw, :eta, :η, eachindex(contingencies), η)
     
-    # define objective function (slack/overload cost terms refer to base-PF slack vars and are only valid when base PF is in master)
+    # define objective function
     if PARAMS[:BENDERS][:BASE_PF_IN_MASTER]
         weighted_obj_func_factory([objective_min_num_gen_switch, objective_min_num_tr_switch, objective_min_num_branch_switch, 
             objective_min_redispatch_cost, objective_min_num_redispatch, objective_min_slack_relative_linear, objective_min_num_slacks], 
@@ -135,9 +132,8 @@ function create_master_problem!(pm::AbstractPowerModel, contingencies::Vector{Co
     #JuMP.write_to_file(pm.model, "mp_$(Dates.format(now(), "HH:MM:SS")).lp")
     
     # inject carried-forward Benders cuts from previous warmstarting stages
-    # Active during RSCOTS stages (pool exists) AND during the main solve (pool was deleted by
-    # filter_active_cuts! at the end of the last warmstart stage but _carried_benders_cuts persists).
-    if PARAMS[:WARMSTARTING][:RSCOTS][:CARRY_FORWARD_CUTS] && (haskey(pm.data, "_benders_cuts_pool") || !isempty(get(pm.data, "_carried_benders_cuts", [])))
+    # Only inject during RSCOTS stages (when _benders_cuts_pool exists), not during the main solve
+    if PARAMS[:WARMSTARTING][:RSCOTS][:CARRY_FORWARD_CUTS] && haskey(pm.data, "_benders_cuts_pool")
         inject_carried_cuts!(pm, pm.data, contingencies, nw=nw)
     end
     
@@ -157,7 +153,7 @@ function create_subproblem!(pm::AbstractPowerModel; nw::Int64=nw_id_default)::Ab
                     #"LogFile"           => get_log_file_name(pm.data),#joinpath(CONSTS[:USER_ENVIRONMENT][:DIRECTORIES][:SOLVER_LOG_DIR], "GRB_SP_$(pm.data["name"])-$(replace(pm.data["start_time"], " " => "_")).out"),
                     "DualReductions"    => 0,       # required to obtain InfUnbdInfo
                     "InfUnbdInfo"       => 1,       # required to know to add cut
-                    "LPWarmStart"       => 0,       # do not use LP warm start
+                    #"LPWarmStart"       => 0,       # do not use LP warm start
                     "NumericFocus"      => 1,       # some SPs are numerically challenging
                     "Threads"           => PARAMS[:SOLVER][:MULTITHREADING][:N_THREADS_MIP_SP]))
                     
@@ -203,7 +199,7 @@ function create_lp!(pm::AbstractPowerModel; nw::Int64=nw_id_default)::AbstractPo
                     "LogToConsole"      => PARAMS[:PRINTING][:SOLVER][:LOG_TO_CONSOLE_SP], 
                     "DualReductions"    => 0,       # required to obtain InfUnbdInfo
                     "InfUnbdInfo"       => 1,       # required to know to add cut
-                    "LPWarmStart"       => 0,       # do not use LP warm start
+                    #"LPWarmStart"       => 0,       # do not use LP warm start
                     "Threads"           => PARAMS[:SOLVER][:MULTITHREADING][:N_THREADS_MIP_SP]))
 
     if PARAMS[:PRECISION][:SOLVER_PREC_DIGITS] >= 0 && PARAMS[:ROUNDING][:MODEL_COEFFS]
@@ -223,10 +219,7 @@ function init_callback_stats(;nested::Bool=false)::Dict{Symbol,Int64}
                   :n_benders_cuts_found, 
                   :n_connect_cuts_added, 
                   :n_leq_fails, 
-                  :n_leq_residual_failures,
                   :n_questionable_sol, 
-                  :n_primal_lp,
-                  :n_fallback_primal_lp,
                   :n_dual_lp, 
                   :n_dual_solver, 
                   :n_cut_value_fail, 
@@ -245,9 +238,6 @@ function init_callback_stats(;nested::Bool=false)::Dict{Symbol,Int64}
 
     return Dict{Symbol,Int64}(s => 0 for s in stats)
 end
-
-# Subproblem workers can enter the LP path concurrently.
-const _LP_CALL_STATS_LOCK = ReentrantLock()
 
 "initialize the callback times tracking dictionary"
 function init_callback_times(;nested::Bool=false)::Dict{Symbol,Float64}
@@ -358,9 +348,10 @@ end
 #-----solving----------------------------------------------------------------------------------------------------------#
 "adds the time on the clock to 'time' and updates the clock to the current time"
 function count_time!(clocks::Vector{Float64}, callback_times, type::Symbol, counter_fallback::Bool)
-    # track fallback time separately
+    # if we're in a fallback solving process, the time is already tracked by the monitoring solve, so document in different field
     if counter_fallback && type ∈ [:contingency_primal, :contingency_dual, :contingency_primal_check, :contingency_dual_check, :contingency_cut_build, :contingency_cut_check]
         type = :contingency_fallback
+        clocks[1] = time()
     end
 
     if type ∈ [:contingency_primal, :contingency_dual, :contingency_primal_check, :contingency_dual_check, :contingency_cut_build, :contingency_cut_check]
@@ -399,18 +390,7 @@ function solve_subproblem(pm_sub::AbstractPowerModel,
     clocks = [time(), time()] # timestamps to track time, categorized by functionality (e.g., cut check etc.) and generated cut type
 
     ### Solve Primal Problem ###
-    # Count actual primal LP attempts, including those that produce no cut.
-    # Fallback recursion passes the underlying LP solver, not FallbackSolver.
-    if !hint_feascut && solver isa Union{FullLPSolver, LPSolver}
-        lock(_LP_CALL_STATS_LOCK) do
-            callback_stats[:n_primal_lp] += 1
-            callback_stats[:n_fallback_primal_lp] += Int(counter_fallback)
-        end
-    end
     success_primal = ! hint_feascut && solve_primal!(solver)
-    if success_primal && solver isa AbstractMatrixSolver
-        success_primal = align_component_angles!(solver, master_var_vals, outage_branches)
-    end
     count_time!(clocks, callback_times, :contingency_primal, counter_fallback)
     ### -- ###
 
@@ -422,9 +402,7 @@ function solve_subproblem(pm_sub::AbstractPowerModel,
         has_new_cut, is_opt_cut, obj_func_value, betas = check_primal_solution(solver, pm_sub, c, master_var_vals, outage_branches, nw=nw)
         
         if PARAMS[:BENDERS][:CHECKS][:CHECK_WITH_FALLBACK] && isa(solver, AbstractMatrixSolver)
-            fallback_start = time()
             (_, eta, type, solver_type) = __check_primal_solution_with_fallback(solver, pm_sub, c, cb_data, master_var_vals, master_var_vals_var, outage_branches, master_varss[1], lhsss[1], dualss, cut_exprs, nw=nw)
-            clocks[1] += time() - fallback_start
             type_orig = has_new_cut ? (is_opt_cut ? :Optimality : :Feasibility) : :Nothing
 
             if !isapprox(eta, obj_func_value, atol=0.1) || type_orig != type
@@ -469,7 +447,7 @@ function solve_subproblem(pm_sub::AbstractPowerModel,
 
         ### Calculate Dual Solution ###
         if ! has_new_cut
-            if typeof(solver) in [FullLPSolver, LPSolver] && JuMP.termination_status(solver.pm.model) != JuMP.MOI.OPTIMAL
+            if typeof(solver) in [FullLPSolver, LPSolver] && JuMP.termination_status(solver.pm.model) == JuMP.MOI.NUMERICAL_ERROR
                 return nothing, 0, :NumericalError, FullLPSolver
             end
             return nothing, 0, :Nothing, typeof(solver)
@@ -486,8 +464,7 @@ function solve_subproblem(pm_sub::AbstractPowerModel,
         # feasibility cut
         elseif PARAMS[:BENDERS][:SUBPROBLEM_SOLVER_DUAL_SOLVE] && typeof(solver) <: AbstractMatrixSolver && !is_opt_cut
             update_dual_feas!(solver, pm_sub, master_var_vals, outage_branches, betas, nw=nw) # update dual problem with primal solution
-            success_dual = solve_dual_feas!(solver) && check_dual_solution(solver) &&
-                           check_feasibility_ray(solver, master_var_vals, outage_branches, betas)
+            success_dual = solve_dual_feas!(solver) && check_dual_solution(solver)
         else
             success_dual = false
         end
@@ -524,9 +501,7 @@ function solve_subproblem(pm_sub::AbstractPowerModel,
     elseif hasproperty(solver, :fallback_solver)
         # apply the buffered update, then solve, then reset the buffered update, then return the computed cut
         old_rhss = apply_fallback_update!(solver.fallback_solver)
-        fallback_start = time()
         (new_con, eta, type, solver_type) = solve_subproblem(pm_sub, c, cb_data, master_varss, master_var_vals, master_var_vals_var, lhsss, dualss, outage_branches, solver.fallback_solver.solver, cut_exprs, nw=nw, int_sol=int_sol, counter_fallback=true)
-        clocks[1] += time() - fallback_start
         reset_fallback_update!(solver.fallback_solver, old_rhss)
         count_time!(clocks, callback_times, :contingency_dual_check, counter_fallback)
         return (new_con, eta, type, solver_type)
@@ -573,21 +548,6 @@ function solve_subproblem(pm_sub::AbstractPowerModel,
                 callback_stats[:n_benders_opt_cuts_found] += 1
                 count_time!(clocks, callback_times, :contingency_cut_opt, counter_fallback)
             else
-                # check inconsistent cuts with the LP before returning a miss
-                if !is_cut_val_correct && hasproperty(solver, :fallback_solver)
-                    old_rhss = apply_fallback_update!(solver.fallback_solver)
-                    try
-                        fallback_result = solve_subproblem(pm_sub, c, cb_data,
-                            master_varss, master_var_vals, master_var_vals_var,
-                            lhsss, dualss, outage_branches, solver.fallback_solver.solver,
-                            cut_exprs; nw=nw, int_sol=int_sol, counter_fallback=true,
-                            prec_mult=prec_mult)
-                        callback_stats[:n_cut_value_fail] += 1
-                        return fallback_result
-                    finally
-                        reset_fallback_update!(solver.fallback_solver, old_rhss)
-                    end
-                end
                 if ! PARAMS[:BENDERS][:CHECKS][:CHECK_WITH_FALLBACK] && PARAMS[:BENDERS][:SUBPROBLEM_SOLVER_TYPE] != typeof(solver) && new_η_val - η_val > SOLVER_PRECISION
                     @warn("The last fallback solver in the chain of type $(typeof(solver)) did not find any cuts for contingency $c, although the previous solver $(PARAMS[:BENDERS][:SUBPROBLEM_SOLVER_TYPE]) detected that there might have to be a cut with violation $(new_η_val) - $(η_val) = $(new_η_val - η_val). This might hint at a poorly scaled cut.")
                 end
@@ -625,30 +585,24 @@ function solve_subproblem(pm_sub::AbstractPowerModel,
 
         ### Check Cut ###
         # if the SP obj was not the same as the LHS val, something might be wrong with the cut, so run the fallback solver on it to be sure
-        if !is_cut_val_correct && (!is_opt_cut || PARAMS[:BENDERS][:CHECKS][:CHECK_FALLBACK_ON_CUT_VAL_DISAG])
+        if !is_cut_val_correct && PARAMS[:BENDERS][:CHECKS][:CHECK_FALLBACK_ON_CUT_VAL_DISAG]
             if hasproperty(solver, :fallback_solver)
                 @info("Checking with fallback solver, because cut value = $(round(new_η_val, digits=3)) ≠ $(round(obj_func_value, digits=3)) = LHS value and type is $type.")
                 old_rhss = apply_fallback_update!(solver.fallback_solver)
-                fallback_start = time()
-                local new_con_fb, eta_fb, type_fb, solver_type
-                try
-                    (new_con_fb, eta_fb, type_fb, solver_type) = solve_subproblem(pm_sub, c, cb_data, master_varss, master_var_vals, master_var_vals_var, lhsss, dualss, outage_branches, solver.fallback_solver.solver, cut_exprs, nw=nw, int_sol=int_sol, counter_fallback=true, prec_mult=prec_mult)
-                    # Read the LP result before resetting its constraints invalidates it.
-                    fb_solver = solver.fallback_solver.solver
-                    if typeof(fb_solver) in [FullLPSolver, LPSolver]
-                        fb_model = fb_solver.pm.model
-                        @info "[FB on cut val disagree] LP result" contingency=c outage_branches=outage_branches status=JuMP.termination_status(fb_model) primal_status=JuMP.primal_status(fb_model) lp_objective=(JuMP.has_values(fb_model) ? JuMP.objective_value(fb_model) : nothing) master_eta=master_var_vals[:η][c] leq_objective=obj_func_value leq_cut_value=new_η_val fallback_type=type_fb
-                    end
-                finally
-                    clocks[1] += time() - fallback_start
-                    reset_fallback_update!(solver.fallback_solver, old_rhss)
+                (new_con_fb, eta_fb, type_fb, solver_type) = solve_subproblem(pm_sub, c, cb_data, master_varss, master_var_vals, master_var_vals_var, lhsss, dualss, outage_branches, solver.fallback_solver.solver, cut_exprs, nw=nw, int_sol=int_sol)
+                reset_fallback_update!(solver.fallback_solver, old_rhss)
+                
+                # check whether the fallback solver agrees with the *corrected* cut value (i.e., the evaluated LHS) new_η_val
+                if (is_opt_cut && isapprox(new_η_val, eta_fb, atol=PARAMS[:BENDERS][:CHECKS][:CHECK_CUT_VALUE_TOL])) || !is_opt_cut && type_fb == :Feasibility
+                    @debug("[FB on cut val disagree] Fallback solver yielded the same cut.")
+                else
+                    @warn("[FB on cut val disagree] Fallback solver yielded cut of type $(type_fb) with value $(round(eta_fb, digits=3)) instead of $(type) with value $(round(new_η_val, digits=3)) (= evaluated LHS from cut). Using cut from fallback solver.")
+                    cut = new_con_fb[1]
+                    new_η_val = eta_fb
+                    type = type_fb
+                    callback_stats[:n_cut_value_fail] += 1
+                    #check_redcost(pm_sub.model)
                 end
-
-                # Infeasibility agreement does not validate the rejected ray.
-                # Return all fallback cuts, including nested levels and solver provenance.
-                callback_stats[:n_cut_value_fail] += 1
-                count_time!(clocks, callback_times, :contingency_cut_check, counter_fallback)
-                return new_con_fb, eta_fb, type_fb, solver_type
             else
                 @warn("Last fallback solver $(typeof(solver)) in the solver chain added a cut that it doesn't agree with itself. This could hint at a poorly scaled cut. \n lhs val = $(round(new_η_val, digits=3)), SP obj func = $(round(obj_func_value, digits=3)), difference: $(round(new_η_val - obj_func_value, digits=3))")
             end
@@ -746,23 +700,16 @@ function solve_subproblem_multi(thread_id::Int64,
         c_id            = subproblem_prio_list[pos][:contingency_id]
         hint_feascut    = get(subproblem_prio_list[pos], :hint_feascut, false)
         outage_branches = get_outage_branches(pm_sub, contingencies[c_id], master_var_vals, filter=true, nw=nw)
-        # Already-open failed lines are also exempt from off-angle bounds, but
-        # must not be removed from the PF matrix or switched back on a second time.
-        all_outage_branches = get_outage_branches(pm_sub, contingencies[c_id], master_var_vals, nw=nw)
 
         # if no outage branch, apply adjusted rate a for master problem
-        if isempty(all_outage_branches)
+        if isempty(outage_branches)
             pm_sub.data["SUBPROBLEM"] = false
             apply_adjusted_rate_a!(pm_sub, sub_cons_for_duals, lhsss, for_n1=false, nw=nw)
         end
         # turn off z variable of outage branches
         switch_off_outage_branches!(master_var_vals, outage_branches)
         # apply additional, solver specific, modifications
-        solver_outages = solver isa AbstractMatrixSolver ? outage_branches : all_outage_branches
-        old_rhss = apply_contingency!(solver, pm_sub, solver_outages, master_var_vals, int_sol, nw=nw)
-        if solver isa AbstractMatrixSolver
-            apply_contingency!(solver.fallback_solver, pm_sub, all_outage_branches, master_var_vals, int_sol, nw=nw)
-        end
+        old_rhss = apply_contingency!(solver, pm_sub, outage_branches, master_var_vals, int_sol, nw=nw)
 
         # solve subproblem
         t = @elapsed begin 
@@ -774,7 +721,7 @@ function solve_subproblem_multi(thread_id::Int64,
                                                                  master_var_vals_var,
                                                                  lhsss, 
                                                                  dualss, 
-                                                                 all_outage_branches, # these vars are excluded from the cut + used to check primal and dual feasibility
+                                                                 outage_branches, # these vars are excluded from the cut + used to check primal and dual feasibility
                                                                  solver,
                                                                  cut_exprs,
                                                                  nw=nw, 
@@ -783,16 +730,12 @@ function solve_subproblem_multi(thread_id::Int64,
                                                                  prec_mult=prec_mult)
         end
 
-        if haskey(pm_sub.ext, :admittance_cuts) && type in (:Optimality, :Feasibility)
-            record_admittance_cut!(pm_sub, c_id, first(new_con), dualss)
-        end
-
         # reset additional modifications
-        reset_contingency!(solver, pm_sub, solver_outages, old_rhss, nw=nw)
+        reset_contingency!(solver, pm_sub, outage_branches, old_rhss, nw=nw)        
         # turn contingency branches back on if they were on before
         switch_on_outage_branches!(master_var_vals, outage_branches)
         # if no outage branch, apply adjusted rate a for master problem
-        if isempty(all_outage_branches)
+        if isempty(outage_branches) 
             pm_sub.data["SUBPROBLEM"] = true
             apply_adjusted_rate_a!(pm_sub, sub_cons_for_duals, lhsss, for_n1=true, nw=nw)
         end
@@ -881,9 +824,6 @@ function solve_subproblem_multi(thread_id::Int64,
 
             if      n_hits >= PARAMS[:BENDERS][:PARTIAL][:LIMITS][:STOP_AFTER_N_HITS]
                 #println(" hits = $(counters[:n_hits]) >= $(PARAMS[:BENDERS][:PARTIAL][:LIMITS][:STOP_AFTER_N_HITS]) = stop_after_n_hits (with n_unrobust_hits = $(counters[:n_unrobust_hits]))")
-                break
-            elseif  n_hits >= PARAMS[:BENDERS][:PARTIAL][:LIMITS][:STOP_AFTER_N_HITS_REL] * length(contingencies)
-                #println(" hits = $(counters[:n_hits]) >= $(PARAMS[:BENDERS][:PARTIAL][:LIMITS][:STOP_AFTER_N_HITS]) * length(contingencies) = stop_after_n_hits_rel (with n_unrobust_hits = $(counters[:n_unrobust_hits]))")
                 break
             elseif  n_misses >= PARAMS[:BENDERS][:PARTIAL][:LIMITS][:STOP_AFTER_N_MISSES]
                 #println(" misses = $(counters[:n_misses]) >= $(PARAMS[:BENDERS][:PARTIAL][:LIMITS][:STOP_AFTER_N_MISSES]) = stop_after_n_misses")
@@ -1001,9 +941,7 @@ function solve_subproblems_multi(n_threads::Int64,
                                  nw::Int64=nw_id_default,
                                  _pre_func!::Function=_prio_pre_weighted_sum!,
                                  int_sol::Bool=true,
-                                 prec_mult=1.0,
-                                 validation_status=nothing,
-                                 validated_repair=nothing
+                                 prec_mult=1.0
                                 )::Tuple{Vector{Vector{JuMP.ScalarConstraint}}, Vector{Float64}, Vector{Int64}, Vector{Tuple{Vector{VariableRef}, Vector{Float64}}}, Int, Int, Float64}
     
     callback_time = time()
@@ -1018,7 +956,7 @@ function solve_subproblems_multi(n_threads::Int64,
 
     # set up subproblem priority list for current master solution
     if ! isempty(subproblem_prio_list)
-        _pre_func!(subproblem_prio_list, counters, data=ref(pm_subs[1], nw))
+        _pre_func!(subproblem_prio_list, counters)
         sort!(subproblem_prio_list, by=(entry->entry[:priority]), rev=true)
     end
 
@@ -1048,10 +986,6 @@ function solve_subproblems_multi(n_threads::Int64,
     # print subproblem statistics summary
     n_solved_subs       = counters[:n_hits] + counters[:n_unrobust_hits] + counters[:n_misses]
     n_generated_cuts    = counters[:n_hits] + counters[:n_unrobust_hits]
-    if !isnothing(validation_status)
-        validation_status[] = int_sol && n_solved_subs == length(contingencies) &&
-                              counters[:num_errors] == 0 && n_generated_cuts == 0
-    end
     if counters[:num_errors] > 0 
         if counters[:n_hits] == 0
             @error("Could not solve $(counters[:num_errors]) subproblems due to numerical troubles, and no other cut found.") 
@@ -1061,29 +995,13 @@ function solve_subproblems_multi(n_threads::Int64,
     end
 
     # if we have cuts, cut selection is enabled, and we are not in a cut stabilization round, select cuts
-    (cuts, n_feas_selected, n_opt_selected, sum_selected_violations) = select_cuts!(ref(pm_subs[1], nw), subproblem_prio_list, subproblem_ids, cons, violations, cb_data, cut_types, n_callbacks=callback_stats[:n_callbacks])
+    (cuts, n_feas_selected, n_opt_selected, sum_selected_violations) = select_cuts!(subproblem_prio_list, subproblem_ids, cons, violations, cb_data, cut_types, n_callbacks=callback_stats[:n_callbacks])
     #@info("Selected $(length(cuts)) cuts from $(length(cons)) generated cuts with $(counters[:n_hits]) hits, $(counters[:n_unrobust_hits]) unrobust hits, and $(counters[:n_misses]) misses.")
 
     callback_stats[:n_solved_subs_total]  += n_solved_subs
     callback_stats[:n_benders_cuts_found] += n_generated_cuts
     callback_stats[:n_benders_cuts_added] += length(cuts)
     
-    # A donor can stream the fully checked recourse repair even when Gurobi's
-    # own incumbent heuristic does not submit it or accepts it without another
-    # no-cut MIPSOL callback. Never repair feasibility or incomplete separation.
-    if !isnothing(validated_repair)
-        validated_repair[] = nothing
-        if int_sol && n_solved_subs == length(contingencies) && counters[:num_errors] == 0 &&
-                !(:Feasibility in cut_types)
-            eta_values = [master_var_valss[1][:η][i] for i in eachindex(contingencies)]
-            for (index, s_id) in enumerate(subproblem_ids)
-                eta_values[s_id] += violations[index]
-            end
-            validated_repair[] = build_benders_solution(master_varss[1], eta_values, cb_data, :η;
-                                                        master_var_vals=master_var_valss[1])
-        end
-    end
-
     # we might have a new solution to provide to the solver
     sols = Vector{Tuple{Vector{VariableRef}, Vector{Float64}}}()
     if PARAMS[:BENDERS][:SUBMIT_HEUR_SOLUTION] && n_solved_subs == length(contingencies)
@@ -1127,18 +1045,16 @@ function solve_subproblems_multi(n_threads::Int64,
                                  nw::Int64=nw_id_default,
                                  _pre_func!::Function=_prio_pre_weighted_sum!,
                                  int_sol::Bool=true,
-                                 prec_mult=1.0,
-                                 validation_status=nothing,
-                                 validated_repair=nothing
+                                 prec_mult=1.0
                                 )::Tuple{Vector{JuMP.ScalarConstraint}, Vector{Float64}, Vector{Int64}, Vector{Tuple{Vector{VariableRef}, Vector{Float64}}}, Int, Int, Float64}
-    (cuts, violations, subproblem_ids, sols, n_feas_selected, n_opt_selected, sum_selected_violations) = solve_subproblems_multi(n_threads, pm_subs, cb_data, contingencies, sub_cons_for_dualss, [master_vars], master_var_valss, master_var_valss_var, [lhss], dualsss, subproblem_prio_list, solvers, [[cut_expr] for cut_expr in cut_exprs], nw=nw, _pre_func! =_pre_func!, int_sol=int_sol, prec_mult=prec_mult, validation_status=validation_status, validated_repair=validated_repair)
+    (cuts, violations, subproblem_ids, sols, n_feas_selected, n_opt_selected, sum_selected_violations) = solve_subproblems_multi(n_threads, pm_subs, cb_data, contingencies, sub_cons_for_dualss, [master_vars], master_var_valss, master_var_valss_var, [lhss], dualsss, subproblem_prio_list, solvers, [[cut_expr] for cut_expr in cut_exprs], nw=nw, _pre_func! =_pre_func!, int_sol=int_sol, prec_mult=prec_mult)
 
     return ([cut[1] for cut in cuts], violations, subproblem_ids, sols, n_feas_selected, n_opt_selected, sum_selected_violations)
 end
 
 
-"Return constraints that prohibit the current solution if the graph is not connected"
-function generate_connectedness_con(pm_subs::Vector, graphs::Vector, subproblem_prio_list, master_vars, master_var_vals::Dict, switched_off_by_master::Vector{Int64}, switched_on_by_master::Vector{Int64}; nw::Int64=nw_id_default)#::Tuple{Vector{JuMP.ScalarConstraint}, Vector{Contingency}}
+"Return constraint that prohibits the current solution if the graph is not connected"
+function generate_connectedness_con(pm_subs::Vector, graphs::Vector, subproblem_prio_list, master_vars, master_var_vals::Dict, switched_off_by_master::Vector{Int64}, switched_on_by_master::Vector{Int64}; nw::Int64=nw_id_default)#::<:Union{JuMP.ScalarConstraint, Nothing}
     # TODO: make use of the multiple pm_sub and g for multithreading
     pm_sub          = pm_subs[1]
     g               = graphs[1]
@@ -1149,30 +1065,19 @@ function generate_connectedness_con(pm_subs::Vector, graphs::Vector, subproblem_
         off_branches = [branch["index"] for (_, branch) in ref(pm_sub, nw, :branch) if branch["status"] == 0]
     end
     busbars = pm_sub.data["BUSBARS"]
-    # `graph` includes ALL components (also isolated/unpowered ones)
-    graph = _create_underlying_graph(pm_sub.data["nw"]["$nw"], merge_substations=busbars, off_branches=Vector{String}(string.(off_branches)), only_largest_component=false)
-
-    base_powered_disconnected = count_powered_components(
-        graph,
-        pm_sub.data["nw"]["$nw"]["bus"],
-        pm_sub.data["nw"]["$nw"]["load"],
-        pm_sub.data["nw"]["$nw"]["gen"],
-        early_stop=2,
-    ) > 1
-
+    graph = _create_underlying_graph(pm_sub.data["nw"]["$nw"], merge_substations=busbars, off_branches=Vector{String}(string.(off_branches)))
+    
     splitting_contingencies_powered = Vector{Contingency}()
     splitting_contingencies = Vector{Contingency}()
-    # base case
-    if base_powered_disconnected
+    # base case 
+    if !MetaGraphsNext.is_connected(graph)
         if !isempty(subproblem_prio_list)
             splitting_contingencies = [subproblem_prio_list[1][:contingency]] # (plus an arbitrary contingency to strengthen the cut)
             splitting_contingencies_powered = [subproblem_prio_list[1][:contingency]]
         end
     else
-        # graph may still contain benign unpowered isolated components
-        graph_main = _keep_largest_component!(deepcopy(graph))
         cont = [e[:contingency] for e in subproblem_prio_list]
-        splitting_contingencies_powered_new, splitting_contingencies_new = get_splitting_contingencies(graph_main, cont, ref(pm_sub, nw), only_powered=true)
+        splitting_contingencies_powered_new, splitting_contingencies_new = get_splitting_contingencies(graph, cont, ref(pm_sub, nw), only_powered=true)
         append!(splitting_contingencies_powered, splitting_contingencies_powered_new)
         # connected in all contingencies & base case
         if isempty(splitting_contingencies_powered)
@@ -1180,113 +1085,41 @@ function generate_connectedness_con(pm_subs::Vector, graphs::Vector, subproblem_
             # we need that information to later on run LEQ directly for these contingencies
             append!(splitting_contingencies, splitting_contingencies_new)
 
-            return Vector{JuMP.ScalarConstraint}(), splitting_contingencies
+            return nothing, splitting_contingencies
         end
     end
 
-    # data for min cut cuts
-    min_cut, capacitated = PARAMS[:BENDERS][:CONN_CUT_MIN_CUT], PARAMS[:BENDERS][:CONN_CUT_CAPACITATED]
-    if min_cut || capacitated
-
-        branch_data = ref(pm_sub, nw, :branch)
-
-        off_branch_buses = Dict{Int64, Tuple{Int64, Int64}}(b_id => (branch_data[b_id]["f_bus"], branch_data[b_id]["t_bus"]) for b_id in off_branches)
-        powered_buses = _powered_buses(_bus_load_gen(ref(pm_sub, nw))[2:3]...)
-        single_contingency_branches = Set{Int64}(only(e[:contingency][:branch]) for e in subproblem_prio_list if keys(e[:contingency]) == Set([:branch]) && length(e[:contingency][:branch]) == 1)
-
-    end
-
     # check base case (no contingency), then each contingency case
-    cons = Vector{JuMP.ScalarConstraint}()
     for contingency in splitting_contingencies_powered
         disabled_branches_wo_contingency = [b_id for b_id in off_branches if b_id::Int64 ∉ contingency[:branch]::Vector{Int64}]
         disabled_branches_contingency = ["$b_id" for b_id in contingency[:branch]]
 
         for b_id in contingency[:branch]
             if haskey(ref(pm_sub, nw, :branch, b_id), "orig_index")
-                push!(disabled_branches_contingency, "$(ref(pm_sub, nw, :branch, b_id)["orig_index"])")
+                push!(disabled_branches_contingency, "$(ref(pm_sub, nw, :branch, b_id))")
             end
         end
         disabled_branches_bid_fbus_tbus  = [["$b_id"; string.(_get_branch_fbus_tbus(b_id, pm_sub, nw=nw))] for b_id in disabled_branches_wo_contingency]
         st_size = _underlying_graph_steiner_tree_approx(pm_sub, master_var_vals, graph, disabled_branches_contingency, disabled_branches_bid_fbus_tbus, nw=nw, only_powered=true)
 
         if st_size > 0
-            if !base_powered_disconnected && isempty(switched_off_by_master) && !any(b_id ∈ switched_on_by_master for b_id in contingency[:branch])
+            # check if the contingency branch was switched ON by the master (OFF→ON).
+            # if so, its failure just reverts to the base topology which was connected — skip it.
+            if any(b_id ∈ switched_on_by_master for b_id in contingency[:branch])
+                @debug("Contingency $contingency involves a branch switched ON by master. Skipping connectedness cut (failure reverts to base topology).")
+                continue
+            end
+            if isempty(switched_off_by_master)
                 error("Contingency $contingency (without any additional switching) leads to unconnectedness. This contingency should have been filtered out in the preprocessing!")
             else
-                ## create connectedness cuts
-                # get the buses on this side of the min cut
-                side = (min_cut || capacitated) ? get_min_cut_side(graph, contingency, off_branch_buses, powered_buses) : nothing
-
-                if isnothing(side)
-                    # at least one off branch needs to be switched on
-                    _push_new!(cons, JuMP.@build_constraint(sum(master_vars[:z_branch][b_id] for b_id in disabled_branches_wo_contingency) >= st_size))
-
-                else
-                    # crosses are all branches crossing from "this" side over, cut_branches excludes contingencies
-                    crosses = b_id -> (branch_data[b_id]["f_bus"] ∈ side) ≠ (branch_data[b_id]["t_bus"] ∈ side)
-                    cut_branches = [b_id for b_id in disabled_branches_wo_contingency if crosses(b_id)]
-
-                    # capacitated cut (non-contingency has capacity 2, contingency has 1, need at least 2)
-                    cap_con = capacitated ? _capacitated_connectedness_cut([cut_branches; [b_id for b_id in contingency[:branch] if haskey(branch_data, b_id) && crosses(b_id)]], single_contingency_branches, master_vars, master_var_vals) : nothing
-
-                    isnothing(cap_con) || _push_new!(cons, cap_con)
-
-                    # min cut (at least one branch in the min cut needs to be turned on)
-                    (min_cut || isnothing(cap_con)) && _push_new!(cons, JuMP.@build_constraint(sum(master_vars[:z_branch][b_id] for b_id in cut_branches) >= 1))
-                end
+                # create connectedness cut
+                cons = JuMP.@build_constraint(sum(master_vars[:z_branch][b_id] for b_id in disabled_branches_wo_contingency) >= st_size)
                 PARAMS[:PRINTING][:BENDERS][:LOG_LINE] && println("Contingency $contingency: Graph is not connected. Adding cut.")
-                PARAMS[:BENDERS][:CONN_CUT_ALL_CONTINGENCIES] || return cons, splitting_contingencies
+                return cons, splitting_contingencies
             end
         end
     end
-    return cons, splitting_contingencies
-end
-
-"push `con` to `cons` if no equal constraint is contained"
-function _push_new!(cons::Vector{JuMP.ScalarConstraint}, con::JuMP.ScalarConstraint)
-    any(c -> c.func == con.func && c.set == con.set, cons) || push!(cons, con)
-    return cons
-end
-
-"capacitated connectedness cut over a cut separating powered buses"
-function _capacitated_connectedness_cut(cut_branches::Vector{Int64}, unsafe_branches::Set{Int64}, master_vars, master_var_vals::Dict)::Union{JuMP.ScalarConstraint, Nothing}
-    z_branch, z_branch_val = master_vars[:z_branch], master_var_vals[:z_branch]
-    terms = Vector{Tuple{Float64, JuMP.VariableRef}}()
-    rhs, value = 2.0, 0.0
-
-    for b_id in cut_branches
-        coeff = b_id ∈ unsafe_branches ? 1.0 : 2.0
-
-        if b_id ∈ axes(z_branch, 1)
-            push!(terms, (coeff, z_branch[b_id]))
-            value += coeff * z_branch_val[b_id]
-        else
-            rhs -= coeff # not switchable, i.e., on
-        end
-
-    end
-
-    value < rhs - SOLVER_PRECISION || return nothing
-    
-    return JuMP.@build_constraint(sum(coeff * z for (coeff, z) in terms) >= rhs)
-end
-
-"fix switching variables based on connectedness"
-function fix_forced_on_branches!(master_vars::Dict, data::Dict, contingencies::Vector{Contingency})::Int64
-    (!PARAMS[:BENDERS][:FIX_FORCED_ON_BRANCHES] || !haskey(master_vars, :z_branch) || isempty(contingencies)) && return 0
-
-    z_branch = master_vars[:z_branch]
-    n_fixed = 0
-    for branch_id in get_forced_on_branches(data, contingencies)
-        
-        if branch_id ∈ axes(z_branch, 1) && !JuMP.is_fixed(z_branch[branch_id])
-            JuMP.fix(z_branch[branch_id], 1.0; force=true)
-            n_fixed += 1
-        end
-    end
-    
-    return n_fixed
+    return nothing, splitting_contingencies
 end
 
 "add hint to subproblem priority list to use fallback solver for certain contingencies"
@@ -1684,29 +1517,9 @@ end
 "main function to create master and sub problem and define Benders callback"
 function build_secure_ots_time_benders(pm::AbstractPowerModel; nw::Int64=1, n_threads::Int64=PARAMS[:SOLVER][:MULTITHREADING][:N_THREADS_BENDERS], subproblem_solver_type::Type = PARAMS[:BENDERS][:SUBPROBLEM_SOLVER_TYPE])::AbstractPowerModel
     # save original contingencies and build priority list
-    contingencies = ref(pm, nw, :contingencies) # list of contingencies that represent the subproblems
-    contingencies_full = ref(pm, nw, :contingencies) # to restore later
-    n_contingencies = length(contingencies)
+    contingencies = ref(pm, nw, :contingencies)
     n_threads = min(n_threads, length(contingencies))
     ref(pm, nw)[:contingencies] = Vector{Contingency}()
-
-    # # Partial Benders Decomposition: leave some contingencies in the master problem
-    if PARAMS[:BENDERS][:PARTIAL_DECOMP][:ENABLED]
-        n_keep_req = n_master_contingencies(n_contingencies)
-        if n_keep_req > 0 # if any contingencies (and not just possibly the base case) should be kept, do this
-            contingencies_relevant = get(ref(pm, nw), :contingencies_relevant, Vector())
-            if !isempty(contingencies_relevant)
-                n_keep = min(n_keep_req, length(contingencies_relevant))
-                contingencies_keep = contingencies_relevant[1:n_keep]
-                ref(pm, nw)[:contingencies] = contingencies_keep # move kept contingencies back into the master
-                contingencies = setdiff(contingencies, contingencies_keep) # reduce subproblem contingency list by the kept contingencies
-                @info("Partial Benders Decomposition: Leaving $(length(contingencies_keep)) contingencies in the master problem, leaving the rest in the original contingency list for decomposition.")
-                @assert(length(contingencies) + length(ref(pm, nw)[:contingencies]) == n_contingencies, "Not all contingencies were accounted for")
-            else
-                @warn("Partial Benders Decomposition is enabled but no relevant contingencies were detected. Partial decomposition will be skipped.")
-            end
-        end
-    end
 
     # track scores and order subproblems accordingly
     subproblem_prio_list::Vector{Dict{Symbol, Any}} = [Dict(:contingency_id=>c, 
@@ -1715,9 +1528,8 @@ function build_secure_ots_time_benders(pm::AbstractPowerModel; nw::Int64=1, n_th
                                                             :load=>0.0, 
                                                             :reliability => 0.0, 
                                                             :n_calls => 0.0,
-                                                            :diversity => 0.0,
                                                             :n_cuts => 0.0,
-                                                            :n_cuts_used => 0.0, # in case we want to limit the number of cuts used
+                                                            :n_cuts_used => 0, # in case we want to limit the number of cuts used
                                                             :sum_violations => 0.0,
                                                             :round_called => -1) for (c, cont) in enumerate(contingencies)]
 
@@ -1736,18 +1548,11 @@ function build_secure_ots_time_benders(pm::AbstractPowerModel; nw::Int64=1, n_th
         pm_subs[i] = create_subproblem!(deepcopy(pm), nw=nw)
     end
     sub_cons_for_dualss = get_sub_cons_for_duals.(pm_subs)
-    if get(pm.data, "_collect_admittance_scores", false) && !isempty(pm_subs)
-        pm.ext[:admittance_subproblem] = first(pm_subs)
-        first(pm_subs).ext[:admittance_cuts] = Any[]
-    end
     printst("Benders", "Built $n_threads subproblem$(n_threads > 1 ? "s" : "").")
 
     # if contingencies exist, initialize subproblem solvers
     if !isempty(contingencies)
         int_solvers = init_int_solvers(subproblem_solver_type, pm, pm_subs, n_threads, sub_cons_for_dualss, nw=nw)
-        if get(pm.data, "_collect_admittance_scores", false)
-            pm.ext[:admittance_solver] = first(int_solvers)
-        end
 
         # if cuts on fractional solutions should be generated, initialize the solvers
         if PARAMS[:BENDERS][:CUTS][:FRACTIONAL_SEPA_NODELIM] >= -1 || PARAMS[:BENDERS][:IN_OUT_STRENGTHENING][:ENABLED] || PARAMS[:BENDERS][:CUT_STRENGTHENING][:ENABLED]
@@ -1763,7 +1568,6 @@ function build_secure_ots_time_benders(pm::AbstractPowerModel; nw::Int64=1, n_th
     end
 
     master_vars = get_master_vars(pm, nw=nw)
-    fix_forced_on_branches!(master_vars, ref(pm, nw), contingencies)
 
     graphs = [_create_underlying_graph(ref(pm, nw)) for _ in 1:n_threads]
 
@@ -1793,13 +1597,9 @@ function build_secure_ots_time_benders(pm::AbstractPowerModel; nw::Int64=1, n_th
 
     master_var_vals = Dict{Symbol, AbstractVector}()
     master_var_vals_var = Dict{VariableRef, Float64}()
-    incumbent_exchange = init_incumbent_exchange(pm; contingencies)
-    if !isnothing(incumbent_exchange)
-        pm.data["_parallel_incumbent_exchange"] = incumbent_exchange
-    end
 
     "update master_var_vals_var and master_var_vals with the values from the callback data"
-    function update_master_var_vals_var!(cb_data, int_sol::Bool)
+    function update_master_var_vals_var!(cb_data)
         if isempty(master_var_vals)
             for (key, vars) in master_vars
                 master_var_vals[key] = JuMP.callback_value.(cb_data, vars)
@@ -1823,24 +1623,11 @@ function build_secure_ots_time_benders(pm::AbstractPowerModel; nw::Int64=1, n_th
                 end
             end
         end
-
-        # round discrete separation values; keep raw values for cut evaluation
-        for (key, vars) in master_vars
-            for id in axes(vars, 1)
-                var = vars[id]
-                if int_sol && (JuMP.is_binary(var) || JuMP.is_integer(var))
-                    val = master_var_vals[key][id]
-                    @assert(isfinite(val) && abs(val - round(val)) <= 1e-5, "Nonintegral discrete value in integer separation: $val")
-                    master_var_vals[key][id] = round(val)
-                end
-            end
-        end
     end
 
 
     "callback that adds Benders cuts to the master problem"
     function benders_callback(cb_data, cb_where::Cint)
-        exchange_callback!(incumbent_exchange, pm, cb_data, cb_where) === :stop && return
         # Check that we are in a valid fractional or integer node
         if cb_where != GRB_CB_MIPSOL && cb_where != GRB_CB_MIPNODE && cb_where != GRB_CB_MESSAGE
             return
@@ -1856,7 +1643,7 @@ function build_secure_ots_time_benders(pm::AbstractPowerModel; nw::Int64=1, n_th
             if ! grb_mip_log
                 if startswith(GRB_MSG, "    Nodes    |    Current Node    ")
                     grb_mip_log = true
-                elseif startswith(GRB_MSG, "Loaded user MIP start with objective") || ! pm.data["WARMSTART_PROVIDED"] || PARAMS[:BENDERS][:PARTIAL_DECOMP][:ENABLED] # TODO check partial decomp compatibility
+                elseif startswith(GRB_MSG, "Loaded user MIP start with objective") || ! pm.data["WARMSTART_PROVIDED"]
                     grb_warmstart_success = true
                 end
                 return
@@ -1911,7 +1698,7 @@ function build_secure_ots_time_benders(pm::AbstractPowerModel; nw::Int64=1, n_th
             # check if number of solved nodes is > PARAMS[:BENDERS][:CUTS][:FRACTIONAL_SEPA_NODELIM] , then return
             resultP = Ref{Cdouble}()
             GRBcbget(cb_data, cb_where, GRB_CB_MIPNODE_NODCNT, resultP)
-            if (PARAMS[:BENDERS][:CUTS][:FRACTIONAL_SEPA_NODELIM] == -1 || resultP[] <= PARAMS[:BENDERS][:CUTS][:FRACTIONAL_SEPA_NODELIM]) && callback_stats[:n_frac_sepas] < PARAMS[:BENDERS][:CUTS][:FRACTIONAL_SEPA_ITERLIM]
+            if PARAMS[:BENDERS][:CUTS][:FRACTIONAL_SEPA_NODELIM] == -1 || resultP[] <= PARAMS[:BENDERS][:CUTS][:FRACTIONAL_SEPA_NODELIM] && callback_stats[:n_frac_sepas] <= PARAMS[:BENDERS][:CUTS][:FRACTIONAL_SEPA_ITERLIM]
                 @debug("Node count: $(resultP[]) <= $(PARAMS[:BENDERS][:CUTS][:FRACTIONAL_SEPA_NODELIM]), separating on fractional solution.")
                 solvers = frac_solvers
                 int_sol = false
@@ -1934,7 +1721,7 @@ function build_secure_ots_time_benders(pm::AbstractPowerModel; nw::Int64=1, n_th
         Gurobi.load_callback_variable_primal(cb_data, cb_where)
         
         # compile or update dictionary that contains the variables and the values of the variables
-        update_master_var_vals_var!(cb_data, int_sol)
+        update_master_var_vals_var!(cb_data)
 
         # Use deepcopy to avoid shared references between threads (for the vals, copy suffices, since nothing is mutated)
         master_var_valss::Vector{Dict{Symbol, AbstractVector}} = [deepcopy(master_var_vals) for _ in 1:n_threads]
@@ -1948,26 +1735,23 @@ function build_secure_ots_time_benders(pm::AbstractPowerModel; nw::Int64=1, n_th
         # solve connectedness subproblems for all contingencies
         if int_sol && ! isempty(pm_subs) #&& PARAMS[:LIMITS][:BRANCH][:TAL_TIMESTEP] > 0
             connect_start_time = time()
-            connectedness_cons, contingencies_hint_feascut = generate_connectedness_con(pm_subs, graphs, subproblem_prio_list, master_vars, master_var_valss[1], switched_off_by_master, switched_on_by_master, nw=nw)
+            connectedness_con, contingencies_hint_feascut = generate_connectedness_con(pm_subs, graphs, subproblem_prio_list, master_vars, master_var_valss[1], switched_off_by_master, switched_on_by_master, nw=nw)
             callback_times[:connect] += time() - connect_start_time
 
-            if ! isempty(connectedness_cons)
+            if ! isnothing(connectedness_con)
                 if PARAMS[:LIMITS][:BRANCH][:TAL_TIMESTEP] == 0
                     @warn("Connectedness cut added for network without any switching.")
                 end
-                for connectedness_con in connectedness_cons
-                    JuMP.MOI.submit(pm.model, JuMP.MOI.LazyConstraint(cb_data), connectedness_con)
-                end
-                callback_stats[:n_connect_cuts_added] += length(connectedness_cons)
-                return
+                JuMP.MOI.submit(pm.model, JuMP.MOI.LazyConstraint(cb_data), connectedness_con)
+                callback_stats[:n_connect_cuts_added] += 1
+                
+                if ! isnothing(connectedness_con) return end
             end
         else
             contingencies_hint_feascut = Vector{Contingency}()
         end
 
         t = time()
-        validated_incumbent = Ref(int_sol && isempty(pm_subs))
-        validated_repair = !isnothing(incumbent_exchange) && incumbent_exchange.role == :donor ? Ref{Any}(nothing) : nothing
         if ! isempty(pm_subs)
             # solve contingency subproblems
             _add_data_to_subproblem_prio_list!.(subproblem_prio_list, [pm], [cb_data], nw=nw)
@@ -1990,14 +1774,11 @@ function build_secure_ots_time_benders(pm::AbstractPowerModel; nw::Int64=1, n_th
                                                      solvers,
                                                      cut_exprs,
                                                      nw=1, 
-                                                     int_sol=int_sol,
-                                                     validation_status=validated_incumbent,
-                                                     validated_repair=validated_repair)
+                                                     int_sol=int_sol)
 
             for con in powerflow_cons
                 JuMP.MOI.submit(pm.model, JuMP.MOI.LazyConstraint(cb_data), con)
             end
-            audit_exchange_cuts!(incumbent_exchange, powerflow_cons)
             # serialize cuts for carry-forward if enabled
             if PARAMS[:WARMSTARTING][:RSCOTS][:CARRY_FORWARD_CUTS] && haskey(pm.data, "_benders_cuts_pool")
                 serialize_constraints!(pm.data["_benders_cuts_pool"], powerflow_cons, contingencies, subproblem_ids)
@@ -2007,8 +1788,6 @@ function build_secure_ots_time_benders(pm::AbstractPowerModel; nw::Int64=1, n_th
             end
         end
         callback_times[:contingency] += time() - t
-        validated_incumbent[] && publish_incumbent!(incumbent_exchange, pm, cb_data)
-        !isnothing(validated_repair) && publish_repaired_incumbent!(incumbent_exchange, pm, cb_data, validated_repair[])
 
         # run Benders cut strengthening
         if PARAMS[:BENDERS][:CUT_STRENGTHENING][:ENABLED] && ! isempty(powerflow_cons) && length(master_var_vals_pool) > 1
@@ -2083,7 +1862,7 @@ function build_secure_ots_time_benders(pm::AbstractPowerModel; nw::Int64=1, n_th
                                             master_vars, 
                                             master_var_valss_modified,
                                             master_var_valss_var, # TODO modify
-                                            lhss, 
+                                            lhsss, 
                                             dualsss, 
                                             subproblem_prio_list, 
                                             solvers,
@@ -2137,6 +1916,6 @@ function build_secure_ots_time_benders(pm::AbstractPowerModel; nw::Int64=1, n_th
     # add callback to solver
     JuMP.MOI.set(pm.model, Gurobi.CallbackFunction(), benders_callback)
 
-    ref(pm, nw)[:contingencies] = contingencies_full
+    ref(pm, nw)[:contingencies] = contingencies
     return pm
 end

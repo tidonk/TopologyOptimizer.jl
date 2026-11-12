@@ -297,6 +297,7 @@ function _rewire_graph_with_substations!(data)
 end
 
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 "Export power network data to a file in the matpower format"
 function export_matpower(file::AbstractString, data::Dict{String,Any})
     open(file, "w") do io
@@ -304,6 +305,7 @@ function export_matpower(file::AbstractString, data::Dict{String,Any})
     end
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 "Export power network data in the matpower format"
 function export_matpower(io::IO, data::Dict{String,Any})
     filter!(x -> x[1] ∉ _mp_non_export_columns, data)

@@ -199,11 +199,10 @@ function build_secure_ots_time_benders_nested(pm::AbstractPowerModel; nw::Int64=
                                                             :contingency=>cont, 
                                                             :priority=>0.0, 
                                                             :load=>0.0, 
-                                                            :reliability => 0.0,
+                                                            :reliability => 0.0, 
                                                             :n_calls => 0.0,
-                                                            :diversity => 0.0,
                                                             :n_cuts => 0.0,
-                                                            :n_cuts_used => 0.0, # in case we want to limit the number of cuts used
+                                                            :n_cuts_used => 0, # in case we want to limit the number of cuts used
                                                             :sum_violations => 0.0,
                                                             :round_called => -1) for (c, cont) in enumerate(contingencies)]
 
@@ -237,19 +236,12 @@ function build_secure_ots_time_benders_nested(pm::AbstractPowerModel; nw::Int64=
 
     switching_model = pm_master_switching.model
     gen_model       = pm_master_gens.model
-
-    # warm start η_rd, otherwise the MIP start (η_rd = 0) can be rejected
-    if get(pm.data, "WARMSTART_PROVIDED", false)
-        η_rd_start = JuMP.value(v -> something(JuMP.start_value(v), 0.0), JuMP.objective_function(gen_model))
-        JuMP.set_start_value(var(pm_master_switching, nw, :η_rd)[1], ceil(η_rd_start, digits=PARAMS[:PRECISION][:SOLVER_PREC_DIGITS]-2))
-    end
-
+    
     if PARAMS[:BRANCHING][:BRANCHING_PRIORITY_MODE] == :SW_HEUR_PRIO
         add_branching_priorities(pm_master_switching, nw=nw)
     end
 
     master_vars_switching, master_vars_gen = get_master_vars_nested(pm_master_switching, pm_master_gens, nw=nw)
-    fix_forced_on_branches!(master_vars_switching, ref(pm_master_switching, nw), contingencies)
     gen_var_to_master_var_switching = Dict{VariableRef, VariableRef}(var=>get_master_var_from_var(var, master_vars_switching) for var in JuMP.all_variables(gen_model) if get_var_basename(var) ∈ keys(master_vars_switching))
 
     graphs = [_create_underlying_graph(ref(pm_master_switching, nw)) for _ in 1:n_threads]
@@ -295,11 +287,11 @@ function build_secure_ots_time_benders_nested(pm::AbstractPowerModel; nw::Int64=
     end
 
     best_η_val = Inf
-    n_pool_cuts = 0  # number of benders cuts kept in the intermediate problem across callbacks
 
-
+    
     cons = []
     presolved = false
+    pre_presolve_con_added = false
 
     "callback that adds Benders cuts to the master problem"
     function nested_benders_callback(cb_data, cb_where::Cint)
@@ -329,7 +321,7 @@ function build_secure_ots_time_benders_nested(pm::AbstractPowerModel; nw::Int64=
             # if we are in the MIP log section, check if the line starts with "H" or "*" (indicating a newly found incumbent solution)
             else
                 if ! grb_warmstart_success
-                    @warn("Provided warmstart was not accepted by Gurobi.")
+                    @error("Provided warmstart was not accepted by Gurobi.")
                     grb_warmstart_success = true # set this to true to not print this line after it was printed once
                 end
                 if GRB_MSG[1] == 'H' || GRB_MSG[1] == '*'
@@ -352,11 +344,10 @@ function build_secure_ots_time_benders_nested(pm::AbstractPowerModel; nw::Int64=
             # check if number of solved nodes is > FRACTIONAL_SEPA_NODELIM, then return
             resultP = Ref{Cdouble}()
             GRBcbget(cb_data, cb_where, GRB_CB_MIPNODE_NODCNT, resultP)
-            if (PARAMS[:BENDERS][:CUTS][:FRACTIONAL_SEPA_NODELIM] == -1 || resultP[] <= PARAMS[:BENDERS][:CUTS][:FRACTIONAL_SEPA_NODELIM]) && callback_stats[:n_frac_sepas] < PARAMS[:BENDERS][:CUTS][:FRACTIONAL_SEPA_ITERLIM]
+            if PARAMS[:BENDERS][:CUTS][:FRACTIONAL_SEPA_NODELIM] == -1 || resultP[] <= PARAMS[:BENDERS][:CUTS][:FRACTIONAL_SEPA_NODELIM]
                 @debug("Node count: $(resultP[]) <= $(PARAMS[:BENDERS][:CUTS][:FRACTIONAL_SEPA_NODELIM]), separating on fractional solution.")
                 solvers = frac_solvers
                 int_sol = false
-                callback_stats[:n_frac_sepas] += 1
             else
                 return
             end
@@ -382,18 +373,17 @@ function build_secure_ots_time_benders_nested(pm::AbstractPowerModel; nw::Int64=
             connect_start_time = time()
             
             (switched_off_by_master, switched_on_by_master)  = get_master_decisions(pm_master_switching, cb_data, nw=nw)
-            connectedness_cons, contingencies_hint_feascut = generate_connectedness_con(pm_subs, graphs, subproblem_prio_list, master_vars_switching, master_var_vals_switching, switched_off_by_master, switched_on_by_master, nw=nw)
-
+            connectedness_con, contingencies_hint_feascut = generate_connectedness_con(pm_subs, graphs, subproblem_prio_list, master_vars_switching, master_var_vals_switching, switched_off_by_master, switched_on_by_master, nw=nw)
+            
             callback_times[:connect] += time() - connect_start_time
-            if ! isempty(connectedness_cons)
+            if ! isnothing(connectedness_con)
                 if PARAMS[:LIMITS][:BRANCH][:TAL_TIMESTEP] == 0
                     @warn("Connectedness cut added for network without any switching.")
                 end
-                for connectedness_con in connectedness_cons
-                    JuMP.MOI.submit(switching_model, JuMP.MOI.LazyConstraint(cb_data), connectedness_con)
-                end
-                callback_stats[:n_connect_cuts_added] += length(connectedness_cons)
-                return
+                JuMP.MOI.submit(switching_model, JuMP.MOI.LazyConstraint(cb_data), connectedness_con)
+                callback_stats[:n_connect_cuts_added] += 1
+                
+                if ! isnothing(connectedness_con) return end
             end
         end
 
@@ -420,7 +410,7 @@ function build_secure_ots_time_benders_nested(pm::AbstractPowerModel; nw::Int64=
                 JuMP.fix(master_vars_gen[:z_gen][gen_id], master_var_vals_switching[:z_gen][gen_id], force=true)
             end
         end
-        if PARAMS[:LIMITS][:TRANSFORMER][:TRANSFORMER_SHIFTING]
+        if PARAMS[:LIMITS][:TRANSFORMER][:TRANSFORMER_SHIFTING] && PARAMS[:LIMITS][:TRANSFORMER][:TRANSFORMER_DISCRETE]
             for tr_id::Int in axes(master_var_vals_switching[:tr_shift],1)
                 JuMP.fix(master_vars_gen[:tr_shift][tr_id], master_var_vals_switching[:tr_shift][tr_id], force=true)
             end
@@ -461,18 +451,11 @@ function build_secure_ots_time_benders_nested(pm::AbstractPowerModel; nw::Int64=
         end
         
         sol_obj_value = Ref{Cdouble}() # objective value of current MIPSOL solution
+        GRBcbget(cb_data, cb_where, GRB_CB_MIPSOL_OBJ, sol_obj_value)
         sol_count = Ref{Cint}()
+        GRBcbget(cb_data, cb_where, GRB_CB_MIPSOL_SOLCNT, sol_count)
         primal_bound = Ref{Cdouble}()
-        if cb_where == GRB_CB_MIPSOL
-            GRBcbget(cb_data, cb_where, GRB_CB_MIPSOL_OBJ, sol_obj_value)
-            GRBcbget(cb_data, cb_where, GRB_CB_MIPSOL_SOLCNT, sol_count)
-            GRBcbget(cb_data, cb_where, GRB_CB_MIPSOL_OBJBST, primal_bound)
-        else
-            GRBcbget(cb_data, cb_where, GRB_CB_MIPNODE_OBJ, sol_obj_value)
-            GRBcbget(cb_data, cb_where, GRB_CB_MIPNODE_SOLCNT, sol_count)
-            GRBcbget(cb_data, cb_where, GRB_CB_MIPNODE_OBJBST, primal_bound)
-        end
-            
+        GRBcbget(cb_data, cb_where, GRB_CB_MIPSOL_OBJBST, primal_bound)
         if sol_count[] > 0
             best_η_val = min(best_η_val, primal_bound[])
         end
@@ -484,16 +467,10 @@ function build_secure_ots_time_benders_nested(pm::AbstractPowerModel; nw::Int64=
             η_val_master = JuMP.value(x ->JuMP.callback_value.(cb_data, x), JuMP.objective_function(switching_model))
         end
 
-        # pre-presolve heuristics sometimes ignore previous lazy constraints -> re-submit the violated ones
-        if PARAMS[:BENDERS][:NESTED][:ADD_IP_CUTS] && !presolved && !isempty(cons)
-            resubmitted = false
-            for con in cons
-                if JuMP.value(x -> JuMP.callback_value.(cb_data, x), con.func) - con.set.upper > SOLVER_PRECISION
-                    JuMP.MOI.submit(switching_model, JuMP.MOI.LazyConstraint(cb_data), con)
-                    resubmitted = true
-                end
-            end
-            resubmitted && return
+        # pre-presolve heuristics sometimes ignore previous lazy constraints -> add this dummy constraint
+        if PARAMS[:BENDERS][:NESTED][:ADD_IP_CUTS] && !presolved && pre_presolve_con_added
+            JuMP.MOI.submit(switching_model, JuMP.MOI.LazyConstraint(cb_data), cons[1])
+            return
         end
         
         # solve until converged, i.e., no more cuts were found (could also use an η tolerance)
@@ -505,9 +482,9 @@ function build_secure_ots_time_benders_nested(pm::AbstractPowerModel; nw::Int64=
         n_iter_same = 0
         
         stop_sym = ' '
-        temp_cuts = Vector{JuMP.ConstraintRef}() # save cuts that are not in the pool, and thus have to be removed from the intermediate problem
+        temp_cuts = Vector{JuMP.ConstraintRef}() # save indices of cuts that are not in the pool, and thus have to be removed from the intermediate problem
         temp_cuts_ids = Vector{Int}() # save indices of cuts that are not in the pool, and thus have to be removed from the intermediate problem
-        cut_count = n_pool_cuts
+        cut_count = length(sub_cons_for_duals_switching[:benders_cut])
         while true
             # solve pm_master_gens after fixing the master variables from the switching master    
             solve_time = time()
@@ -643,29 +620,47 @@ function build_secure_ots_time_benders_nested(pm::AbstractPowerModel; nw::Int64=
             # check if the constraint will be binding in the switching master
             if !(JuMP.termination_status(gen_model) == JuMP.MOI.OPTIMAL && η_val_new <= η_val_master + SOLVER_PRECISION)
                 # build the cut using the dual variable values from the gen master problem and add it to the switching master problem
-                constant = JuMP.termination_status(gen_model) == JuMP.MOI.OPTIMAL ? JuMP.objective_function(gen_model).constant : 0.0
-                update_benders_expression!(cut_expr_switching, constant, lhss_switching, dualss_switching)
+                rc_sum = 0.0
+                for var in JuMP.all_variables(gen_model)
+                    if JuMP.reduced_cost(var) != 0.0 && JuMP.is_binary(var)
+                        rc_sum += JuMP.reduced_cost(var) * JuMP.value(var)
+                    end
+                end
 
+                constant = rc_sum + (JuMP.termination_status(gen_model) == JuMP.MOI.OPTIMAL ? JuMP.objective_function(gen_model).constant : 0.0)
+                update_benders_expression!(cut_expr_switching, constant, lhss_switching, dualss_switching)
+                
                 # finish the cut
                 con = JuMP.@build_constraint(cut_expr_switching <= η_rd)
 
-                # remember cuts added before presolve, to re-submit them if they are ignored
-                if !presolved
+                if !pre_presolve_con_added
                     push!(cons, con)
+                    pre_presolve_con_added = true
                 end
-
+                
                 JuMP.MOI.submit(switching_model, JuMP.MOI.LazyConstraint(cb_data), con)
 
+                sol_count = Ref{Cint}()
+                GRBcbget(cb_data, cb_where, GRB_CB_MIPSOL_SOLCNT, sol_count)
+                
                 # if optimal, we might have a (better) primal solution by simply updating the value for eta, but Gurobi would disregard the entire solution
                 if PARAMS[:BENDERS][:SUBMIT_HEUR_SOLUTION] && JuMP.termination_status(gen_model) == JuMP.MOI.OPTIMAL
-                    # total objective value
-                    obj_val_new = η_val_new + (sol_obj_value[] - η_val_master)
+                    new_sol = false
 
-                    # if there is no incumbent, this solution is obviously good, otherwise check if better than incumbent
-                    new_sol = (sol_count[] == 0 && best_η_val ≥ Inf) || obj_val_new < best_η_val
+                    if sol_count[] == 0 && best_η_val ≥ Inf # if there is no incumbent, this solution is obviously good
+                        new_sol = true
+                    else # check if better than incumbent
+                        primal_bound = Ref{Cdouble}()
+                        GRBcbget(cb_data, cb_where, GRB_CB_MIPSOL_OBJBST, primal_bound)
+
+                        # better if c(X∖η) + η_val_new smaller than current primal bound
+                        if η_val_new < best_η_val
+                            new_sol = true
+                        end
+                    end
 
                     if new_sol
-                        best_η_val = obj_val_new
+                        best_η_val = η_val_new
 
                         variables, values = build_benders_solution(master_vars_switching, [η_val_new], cb_data, :η_rd)
                         
@@ -675,7 +670,6 @@ function build_secure_ots_time_benders_nested(pm::AbstractPowerModel; nw::Int64=
             end
         end
 
-        n_pool_cuts = cut_count
         JuMP.delete.(gen_model, temp_cuts)
         if PARAMS[:BENDERS][:NESTED][:ADD_IP_CUTS]
             filter!(id_con  -> id_con[1]::Int  ∉ temp_cuts_ids, sub_cons_for_duals_switching[:benders_cut])

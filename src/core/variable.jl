@@ -176,6 +176,19 @@ function variable_bus_voltage_imaginary_sec(pm::AbstractPowerModel, contingencie
     report && sol_component_value(pm, nw, :bus, :vi_sec, sec_buses, vi_sec)
 end
 
+"variable: `t[i]` for `i` in `bus`es"
+# TODO: remove?
+function variable_bus_voltage_angle_sec_complete(pm::AbstractPowerModel, contingencies::Vector{Contingency}; nw::Int=nw_id_default, bounded::Bool=true, report::Bool=true)
+    sec_buses = [(i,c) for i in ids(pm, nw, :bus) for (c, contingency) in enumerate(contingencies)]
+
+    va_sec = var(pm, nw)[:va_sec] = JuMP.@variable(pm.model,
+        [(i,c) in sec_buses], base_name="$(nw)_va_sec",
+        start = comp_start_value(ref(pm, nw, :bus, i), "va_start")
+    )
+
+    report && sol_component_value(pm, nw, :bus, :va_sec, sec_buses, va_sec)
+end
+
 "variable: `v[i]` for `i` in `bus`es"
 function variable_bus_voltage_magnitude_sec(pm::AbstractPowerModel, contingencies::Vector{Contingency}; nw::Int=nw_id_default, bounded::Bool=true, report::Bool=true)
     sec_buses = [(i,c) for i in ids(pm, nw, :bus) for (c, contingency) in enumerate(contingencies) if i ∉ get(contingency, :bus, [])]
@@ -661,6 +674,61 @@ function variable_gen_power_imaginary_sec(pm::AbstractPowerModel, contingencies:
     report && sol_component_value(pm, nw, :gen, :qg_sec, sec_gens, qg_sec)
 end
 
+"generates variables for `active` generation"
+#TODO: remove? (also all others below with _complete)
+function variable_gen_power_sec_complete(pm::AbstractPowerModel, contingencies::Vector{Contingency}; kwargs...)
+    variable_gen_power_real_sec_complete(pm, contingencies; kwargs...)
+    variable_gen_power_imaginary_sec_complete(pm, contingencies; kwargs...)
+end
+
+"variable: `pg[j, c]` for `j` in `gen` for `c` in `contingencies`"
+function variable_gen_power_real_sec_complete(pm::AbstractPowerModel, contingencies::Vector{Contingency}; nw::Int=nw_id_default, bounded::Bool=true, report::Bool=true)
+    sec_gens = [(i,c) for i in ids(pm, nw, :gen) for (c, contingency) in enumerate(contingencies)]
+
+    pg_sec = var(pm, nw)[:pg_sec] = JuMP.@variable(pm.model,
+        [(i, c) in sec_gens], base_name="$(nw)_pg_sec",
+        start = comp_start_value(ref(pm, nw, :gen, i), "pg_start")
+    )
+
+    if bounded
+        for (i, gen) in ref(pm, nw, :gen)
+            for (c, contingency) in enumerate(contingencies)
+                # if this `gen` can be disabled by the `contingency`, its pmin needs to be determined by an additional constraint
+                pmin = i in get(contingency, :gen, []) ? 0 : gen["pmin"]
+                
+                JuMP.set_lower_bound(pg_sec[(i, c)], 0) # TODO: enforce pmin by a constraint that is coupled with z_gen
+                JuMP.set_upper_bound(pg_sec[(i, c)], gen["pmax"])
+            end
+        end
+    end
+
+    report && sol_component_value(pm, nw, :gen, :pg_sec, sec_gens, pg_sec)
+end
+
+"variable: `pg[j, c]` for `j` in `gen` for `c` in `contingencies`"
+function variable_gen_power_imaginary_sec_complete(pm::AbstractPowerModel, contingencies::Vector{Contingency}; nw::Int=nw_id_default, bounded::Bool=true, report::Bool=true)
+    sec_gens = [(i,c) for i in ids(pm, nw, :gen) for (c, contingency) in enumerate(contingencies)]
+
+    qg_sec = var(pm, nw)[:qg_sec] = JuMP.@variable(pm.model,
+        [(i,c) in sec_gens], base_name="$(nw)_qg_sec",
+        start = comp_start_value(ref(pm, nw, :gen, i), "qg_start")
+    )
+
+    if bounded
+        for (i, gen) in ref(pm, nw, :gen)
+            for (c, contingency) in enumerate(contingencies)
+                # if this `gen` can be disabled by the `contingency`, its pmin needs to be determined by an additional constraint
+                qmin = i in get(contingency, :gen, []) ? min(gen["qmin"], 0) : gen["qmin"]
+
+                JuMP.set_lower_bound(qg_sec[(i,c)], qmin)
+                JuMP.set_upper_bound(qg_sec[(i,c)], gen["qmax"])
+            end
+        end
+    end
+
+    report && sol_component_value(pm, nw, :gen, :qg_sec, sec_gens, qg_sec)
+end
+
 ""
 function variable_pd_slack_on_off(pm::AbstractPowerModel; nw::Int=nw_id_default, bounded::Bool=true, report::Bool=true)
     pd_slack_lower_on_off = var(pm, nw)[:pd_slack_lower_on_off] = JuMP.@variable(pm.model,
@@ -995,6 +1063,46 @@ function variable_dcline_power_real_sec_complete(pm::AbstractPowerModel, conting
     report && sol_component_value_edge(pm, nw, :dcline, :pf, :pt, arcs_from_sec, arcs_to_sec, p_dc_sec)
 end
 
+"generates variables for both `active` and `reactive` generation"
+# TODO: I don't think this percentage is used anywhere anymore
+function variable_gen_power_change_percentage_slack(pm::AbstractPowerModel; kwargs...)
+    variable_gen_power_change_percentage_slack_real(pm; kwargs...)
+    #variable_gen_power_change_slack_imaginary(pm; kwargs...)
+end
+
+"variable: `pg_delta[j]` for `j` in `gen`"
+function variable_gen_power_change_percentage_slack_real(pm::AbstractPowerModel; nw::Int=nw_id_default, bounded::Bool=true, report::Bool=true)
+    pg_delta_percentage_slack = var(pm, nw)[:pg_delta_percentage_slack] = JuMP.@variable(pm.model,
+        [i in ids(pm, nw, :gen)], base_name="$(nw)_pg_delta_percentage_slack",
+        start = 0
+    )
+
+    if bounded
+        for (i, gen) in ref(pm, nw, :gen)
+            JuMP.set_lower_bound(pg_delta_percentage_slack[i], 0)
+            JuMP.set_upper_bound(pg_delta_percentage_slack[i], 1-gen["pg_delta_percentage"])
+        end
+    end
+
+    report && sol_component_value(pm, nw, :gen, :pg_delta_percentage_slack, ids(pm, nw, :gen), pg_delta_percentage_slack)
+end
+
+"variable: `qg_delta[j]` for `j` in `gen`"
+function variable_gen_power_change_percentage_slack_imaginary(pm::AbstractPowerModel; nw::Int=nw_id_default, bounded::Bool=true, report::Bool=true)
+    qg_delta_percentage_slack = var(pm, nw)[:qg_delta_percentage_slack] = JuMP.@variable(pm.model,
+        [i in ids(pm, nw, :gen)], base_name="$(nw)_qg_delta_slack",
+        start = 0
+    )
+
+    if bounded
+        for (i, gen) in ref(pm, nw, :gen)
+            #JuMP.set_lower_bound(qg_delta_slack[i], 0)
+        end
+    end
+
+    report && sol_component_value(pm, nw, :gen, :qg_delta_percentage_slack, ids(pm, nw, :gen), qg_delta_percentage_slack)
+end
+
 "wrapper function for gen, branch and dcline power as well as voltage angle difference slack variables"
 function variable_component_slack(pm::AbstractPowerModel, slack_types::Vector{Symbol}; kwargs...)
     if :pg       ∈ slack_types; variable_gen_power_real_slack(pm; kwargs...);        end
@@ -1005,6 +1113,7 @@ function variable_component_slack(pm::AbstractPowerModel, slack_types::Vector{Sy
     if :vm       ∈ slack_types; variable_bus_voltage_magnitude_slack(pm; kwargs...); end
     if :pd       ∈ slack_types; variable_pd_slack(pm; kwargs...);                    end
     if :qd       ∈ slack_types; variable_qd_slack(pm; kwargs...);                    end
+    #if :pg_delta_percentage       ∈ slack_types; # nothing to do here, this is done in variable_gen_power_change_percentage_slack
 end
 
 "wrapper function for gen, branch and dcline power as well as voltage angle difference slack binary variables"
@@ -1015,9 +1124,11 @@ function variable_component_slack_on_off(pm::AbstractPowerModel, slack_types::Ve
     if :dclinepf ∈ slack_types; variable_dcline_power_slack_on_off(pm; kwargs...);          end
     if :vad      ∈ slack_types; variable_vad_slack_on_off(pm; kwargs...);                   end
     if :vm       ∈ slack_types; variable_bus_voltage_magnitude_slack_on_off(pm; kwargs...); end
+    if :pg_delta_percentage       ∈ slack_types; variable_pg_delta_percentage_slack_on_off(pm; kwargs...); end
     if :pd       ∈ slack_types; variable_pd_slack_on_off(pm; kwargs...);                    end
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 "variable: `0 <= z_branch[l] <= 1` for `l` in `branch`es"
 function variable_branch_indicator(pm::AbstractPowerModel; nw::Int=nw_id_default, relax::Bool=false, report::Bool=true, fix::Bool=true)
     sw_br_ids = [br_id for (br_id, branch) in ref(pm, nw, :branch) if is_branch_switchable(branch)]
@@ -1068,6 +1179,12 @@ function variable_branch_change_indicator(pm::AbstractPowerModel; nw::Int=nw_id_
             upper_bound = 1.0,
             start = comp_start_value(ref(pm, nw, :branch, l), "z_branch_change_start", 1.0)
         )
+    end
+
+    for l ∈ sw_br_ids
+        if comp_start_value(ref(pm, nw, :branch, l), "z_branch_change_start", 0.0) == 1.0
+            JuMP.MOI.set(pm.model, Gurobi.VariableAttribute("VarHintVal"), z_branch_change[l], 1.0)
+        end
     end
 
     if get(pm.data, "FIX_TS", false) && ! get(pm.data, "SUBPROBLEM", false)
@@ -1324,11 +1441,13 @@ function variable_gen_power_change_on_off(pm::AbstractPowerModel; nw::Int=nw_id_
     report && sol_component_value(pm, nw, :gen, :pg_delta_on_off, ids(pm, nw, :gen), pg_delta_on_off)
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 function variable_gen_power_on_off(pm::AbstractPowerModel; kwargs...)
     variable_gen_power_real_on_off(pm; kwargs...)
     variable_gen_power_imaginary_on_off(pm; kwargs...)
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 "generates variables for both `active` and `reactive` generation"
 function variable_gen_power(pm::AbstractPowerModel; bounded::Bool=true, kwargs...)
     slack_types = get(ismultinetwork(pm) ? pm.data["nw"]["1"] : pm.data, "slack_types", [])
@@ -1336,6 +1455,7 @@ function variable_gen_power(pm::AbstractPowerModel; bounded::Bool=true, kwargs..
     variable_gen_power_imaginary(pm, bounded=:qg ∉ slack_types && bounded; kwargs...)
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 "variable: `pg[j]` for `j` in `gen`"
 function variable_gen_power_real(pm::AbstractPowerModel; nw::Int=nw_id_default, bounded::Bool=true, report::Bool=true)
     pg = var(pm, nw)[:pg] = JuMP.@variable(pm.model,
@@ -1382,6 +1502,7 @@ function variable_gen_power_real(pm::AbstractPowerModel; nw::Int=nw_id_default, 
     report && sol_component_value(pm, nw, :gen, :pg, ids(pm, nw, :gen), pg)
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 "variable: `0 <= z_gen[j] <= 1` for `j` in `gen`"
 function variable_gen_indicator(pm::AbstractPowerModel; nw::Int=nw_id_default, relax::Bool=false, report::Bool=true)
     switchable_gen_ids_one_per_gsk = [gen_id for (gen_id, gen) in ref(pm, nw, :gen) if is_gen_switchable(gen) && !haskey(gen, "gsk_name")]

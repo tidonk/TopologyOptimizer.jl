@@ -119,9 +119,6 @@ function set_dc_pf_start_values!(data::Dict{String, <:Any}, solution; fix_uc=fal
         # there doesn't have to be a solution for the bus, if PARAMS[:BENDERS][:BASE_PF_IN_MASTER] = false
         if haskey(_solution, "bus")
             for (bus_id, bus) in network["bus"]
-                if ! haskey(_solution["bus"], bus_id)
-                    continue
-                end
                 if haskey(_solution["bus"][bus_id], "va")
                     bus["va_start"] = _solution["bus"][bus_id]["va"]
                 end

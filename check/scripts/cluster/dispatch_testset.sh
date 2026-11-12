@@ -24,19 +24,15 @@ project_dir="$(realpath "${script_dir}/../../..")"
 
 INSTANCES_DIR="${project_dir}/check/instances/main"
 RESULTS_DIR="${project_dir}/check/results"
+LOG_FOLDER="${RESULTS_DIR}/cluster_logs"
 
 
 # ===== Argument parsing =====
 experiment_name="experiment"
 SETTINGS_PATH=""
 DRY_RUN=false
-NICE_USER=false
 N_MIN_BUSES=73
 N_MAX_BUSES=5000
-JOB_PRIORITY=0
-PARALLEL_TAL=false
-PARALLEL_SHARING=true
-JOB_MEMORY="16GB"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -44,47 +40,24 @@ while [[ $# -gt 0 ]]; do
             experiment_name="$2"; shift 2 ;;
         --settings)
             SETTINGS_PATH="$2"; shift 2 ;;
-        --instances)
-            INSTANCES_DIR="$2"; shift 2 ;;
         --dry-run)
             DRY_RUN=true; shift ;;
-        --nice)
-            NICE_USER=true; shift ;;
         --min_buses)
             N_MIN_BUSES="$2"; shift 2 ;;
         --max_buses)
             N_MAX_BUSES="$2"; shift 2 ;;
-        --priority)
-            JOB_PRIORITY="$2"; shift 2 ;;
-        --parallel-tal)
-            PARALLEL_TAL=true; shift ;;
-        --no-sharing)
-            PARALLEL_SHARING=false; shift ;;
-        --memory)
-            JOB_MEMORY="$2"; shift 2 ;;
         *)
             echo "Unknown argument: $1" >&2
-            echo "Usage: $0 --settings <file_or_dir> [--experiment_name <name>] [--instances <dir>] [--min_buses <n>] [--max_buses <n>] [--priority <n>] [--dry-run] [--nice]" >&2
+            echo "Usage: $0 --settings <file_or_dir> [--experiment_name <name>] [--min_buses <n>] [--max_buses <n>] [--dry-run]" >&2
             exit 1 ;;
     esac
 done
 
-if [[ "$PARALLEL_SHARING" == "false" && "$PARALLEL_TAL" != "true" ]]; then
-    echo "Error: --no-sharing requires --parallel-tal" >&2
-    exit 1
-fi
-
 if [[ -z "$SETTINGS_PATH" ]]; then
     echo "Error: --settings is required" >&2
-    echo "Usage: $0 --settings <file_or_dir> [--experiment_name <name>] [--instances <dir>] [--min_buses <n>] [--max_buses <n>] [--priority <n>] [--dry-run] [--nice]" >&2
+    echo "Usage: $0 --settings <file_or_dir> [--experiment_name <name>] [--min_buses <n>] [--max_buses <n>] [--dry-run]" >&2
     exit 1
 fi
-
-if [[ ! -d "$INSTANCES_DIR" ]]; then
-    echo "Error: --instances must be an existing directory: ${INSTANCES_DIR}" >&2
-    exit 1
-fi
-INSTANCES_DIR="$(realpath "$INSTANCES_DIR")"
 
 SETTINGS_PATH="$(realpath "$SETTINGS_PATH")"
 
@@ -107,22 +80,16 @@ fi
 
 dry_run_label=""
 [[ "$DRY_RUN" == "true" ]] && dry_run_label=" (DRY RUN)"
-nice_label=""
-[[ "$NICE_USER" == "true" ]] && nice_label=" (NICE)"
-echo "Dispatching experiment: ${experiment_name}${dry_run_label}${nice_label}"
+echo "Dispatching experiment: ${experiment_name}${dry_run_label}"
 echo "  Instances : ${INSTANCES_DIR}"
 echo "  Settings  : ${settings_desc}"
 echo "  Min buses : ${N_MIN_BUSES}"
 echo "  Max buses : ${N_MAX_BUSES}"
-echo "  Priority  : ${JOB_PRIORITY} (user internal)"
 echo "  Results   : ${RESULTS_DIR}/${experiment_name}"
-echo "  Logs      : ${RESULTS_DIR}/${experiment_name}/<settings>/cluster_logs"
+echo "  Logs      : ${LOG_FOLDER}"
 
+mkdir -p "${LOG_FOLDER}"
 mkdir -p "${RESULTS_DIR}/temp"
-for _sf in "${settings_files[@]}"; do
-    _sn="$(basename "${_sf}" .toml)"
-    mkdir -p "${RESULTS_DIR}/${experiment_name}/${_sn}/cluster_logs"
-done
 
 
 # ===== Job counters =====
@@ -131,7 +98,6 @@ running=0
 submitted=0
 resubmitted=0
 unknown=0
-submission_failures=0
 
 
 # ===== Helper functions =====
@@ -149,18 +115,11 @@ print_status() {
 }
 
 # Return 0 (true) if a job with the given name is currently in the condor queue.
-# Uses a cached snapshot of condor_q -af Arguments (autoformat, one-job-per-line).
-# HTCondor's autoformat tokenises each argument word into single-quoted tokens, so
-# Arguments for our jobs looks like: -c 'echo' 'Running' 'JOBNAME' '&&' ...
-# Matching the job name surrounded by token boundaries (' 'JOBNAME' ') gives an
-# exact, non-truncated, no-partial-match check.
 is_job_running() {
     echo "$_QUEUE_ARGS" | grep -qF "' '${1}' '"
 }
 
-# Refresh the condor queue cache (called once before the main loop).
-# condor_q -af (autoformat) reliably outputs one value per job; '-format %s\n'
-# returns 'undefined' on this cluster for ClassAd attributes.
+# Refresh the condor queue cache
 refresh_queue_cache() {
     _QUEUE_ARGS=$(condor_q -af Arguments 2>/dev/null)
 }
@@ -176,9 +135,7 @@ has_unknown_termination() {
     [[ -f "$1" ]] && grep -q 'Set parameter' "$1"
 }
 
-# Extract the short hostname of the most recent execute node from a condor .log file.
-# HTCondor 001 events ("Job executing on host") carry alias=HOSTNAME.or.rwth-aachen.de.
-# Returns only the short hostname (everything before the first dot).
+# Extract hostname
 get_last_execute_machine() {
     local log_file="$1"
     grep '^001 ' "$log_file" 2>/dev/null \
@@ -198,7 +155,7 @@ get_case_buses() {
 }
 
 # Write a HTCondor .sub file and submit it
-# Usage: submit_condor_job <job_name> <sub_file_path> <casefile> <settings_file> <exp_name> <settings_name> <log_folder>
+# Usage: submit_condor_job <job_name> <sub_file_path> <casefile> <settings_file> <exp_name> <settings_name>
 submit_condor_job() {
     local job_name="$1"
     local job_sub_path="$2"
@@ -206,57 +163,31 @@ submit_condor_job() {
     local settings_file="$4"
     local exp_name="$5"
     local settings_name="$6"
-    local log_folder="$7"
-    local run_command="$HOME/.juliaup/bin/julia --startup-file=no --history-file=no --project=${project_dir} ${script_dir}/solve_instance.jl ${casefile} ${settings_file} ${exp_name}"
-    local resource_lines=""
-    local remove_after=14400
-    local job_depot="/local/tmp/${USER}/.julia"
-    local license_path="${GRB_LICENSE_FILE:?Set GRB_LICENSE_FILE before submitting jobs}"
-    local extra_environment=""
-    if [[ "$PARALLEL_TAL" == "true" ]]; then
-        run_command="/usr/bin/python3 ${script_dir}/run_parallel_tal.py ${casefile} ${settings_file} ${exp_name}"
-        [[ "$PARALLEL_SHARING" == "false" ]] && run_command+=" --no-sharing"
-        resource_lines="request_cpus = 8"$'\n'"request_memory = ${JOB_MEMORY}"
-        resource_lines+=$'\n'"+ParallelTAL = True"$'\n'"+TargetTAL = 2"
-        extra_environment=" INNOPTEM_JULIA=${INNOPTEM_JULIA:-$HOME/.juliaup/bin/julia}"
-        job_depot="/local/tmp/${USER}/.julia"
-        license_path="${GRB_LICENSE_FILE:?Set GRB_LICENSE_FILE before submitting jobs}"
-        remove_after=$(/usr/bin/python3 "${script_dir}/run_parallel_tal.py" --print-watchdog "$settings_file") || return
-    fi
 
     cat <<SUBEOF > "${job_sub_path}"
 # HTCondor job submission file for TopologyOptimizer experiment
 universe = vanilla
 executable = /bin/bash
-arguments = "-c 'echo Running ${job_name} && mkdir -p /local/tmp/${USER} && ${run_command}'"
-environment = "HOME=$HOME JULIA_PROJECT=${project_dir} GRB_LICENSE_FILE=${license_path} JULIA_DEPOT_PATH=${job_depot}${extra_environment}"
-${resource_lines}
+arguments = "-c 'echo Running ${job_name} && mkdir -p /local/tmp/${USER} && $HOME/.juliaup/bin/julia --startup-file=no --history-file=no --project=${project_dir} ${script_dir}/solve_instance.jl ${casefile} ${settings_file} ${exp_name}'"
+environment = "HOME=$HOME JULIA_PROJECT=${project_dir} GRB_LICENSE_FILE=${GRB_LICENSE_FILE:?Set GRB_LICENSE_FILE before submitting jobs} JULIA_DEPOT_PATH=/local/tmp/${USER}/.julia"
 
 # Log and output file paths
-output = ${log_folder}/${job_name}.out
-error  = ${log_folder}/${job_name}.err
-log    = ${log_folder}/${job_name}.log
+output = ${LOG_FOLDER}/${job_name}.out
+error  = ${LOG_FOLDER}/${job_name}.err
+log    = ${LOG_FOLDER}/${job_name}.log
 
 # Job details
 batch_name = ${exp_name}: ${settings_name}
 name = ${job_name}
 
-# Paired runs budget SCOPF plus the main solve and setup; ordinary jobs keep 4h.
-periodic_remove = (JobStatus == 2 && (CurrentTime - JobStartDate) > ${remove_after})
+# Automatically remove jobs running longer than 4 hours (14400s)
+periodic_remove = (JobStatus == 2 && (CurrentTime - JobStartDate) > 14400)
 
-requirements = True
-
-# Submit as nice user (with very low priority) if requested
-$( [[ "$NICE_USER" == "true" ]] && echo 'nice_user = true' )
-priority = ${JOB_PRIORITY}
-
+# Exclude the faulty machine
 queue
 SUBEOF
 
-    if [[ "$DRY_RUN" == "false" ]]; then
-        condor_submit "${job_sub_path}" | tee "${job_sub_path}.submission.txt"
-        return "${PIPESTATUS[0]}"
-    fi
+    [[ "$DRY_RUN" == "false" ]] && condor_submit "${job_sub_path}" > /dev/null 2>&1
 }
 
 
@@ -293,14 +224,11 @@ process_casefile() {
     for settings_file in "${settings_files[@]}"; do
         settings_basename=$(basename "$settings_file")
         settingsname="${settings_basename%.toml}"
-        LOG_FOLDER="${RESULTS_DIR}/${experiment_name}/${settingsname}/cluster_logs"
-        mkdir -p "${LOG_FOLDER}"
 
         JOB_NAME="${experiment_name}_${casename}.${settingsname}"
         JOB_SUB_PATH="${RESULTS_DIR}/temp/${JOB_NAME}.sub"
         RESULT_CSV="${RESULTS_DIR}/${experiment_name}/${settingsname}/${casename}.${settingsname}.csv"
         OUT_FILE="${LOG_FOLDER}/${JOB_NAME}.out"
-        ERR_FILE="${LOG_FOLDER}/${JOB_NAME}.err"
 
         if is_job_running "$JOB_NAME"; then
             print_status "yellow" "Running" "$JOB_NAME" "Job is already running"
@@ -319,14 +247,8 @@ process_casefile() {
             continue
         fi
 
-        if [[ "$PARALLEL_TAL" == "true" && -f "${RESULTS_DIR}/${experiment_name}/${settingsname}/${casename}/run.claim" ]]; then
-            print_status "red" "Preserved" "$JOB_NAME" "An earlier paired attempt exists; use a new experiment name for a retry"
-            unknown=$((unknown + 1))
-            continue
-        fi
-
         PRIOR_ERROR=false
-        if has_unknown_termination "$OUT_FILE" || [[ -s "$ERR_FILE" ]]; then
+        if has_unknown_termination "$OUT_FILE"; then
             PRIOR_ERROR=true
             unknown=$((unknown + 1))
         fi
@@ -353,13 +275,10 @@ process_casefile() {
             submitted=$((submitted + 1))
         fi
 
-        if ! submit_condor_job \
+        submit_condor_job \
             "$JOB_NAME" "$JOB_SUB_PATH" \
             "$casefile" "$settings_file" \
-            "$experiment_name" "$settingsname" "$LOG_FOLDER"; then
-            print_status "red" "Failed" "$JOB_NAME" "condor_submit failed; see submission receipt"
-            submission_failures=$((submission_failures + 1))
-        fi
+            "$experiment_name" "$settingsname"
     done
 }
 
@@ -395,8 +314,3 @@ printf "\e[0m%-10s \e[32m%-10s \e[33m%-10s \e[34m%-10s \e[31m%-10s \e[31m%-10s\e
     "Status" "Finished" "Running" "Submitted" "Resubmit" "Unknown"
 printf "%-10s \e[32m%-10s \e[33m%-10s \e[34m%-10s \e[31m%-10s \e[31m%-10s\e[0m\n" \
     " " "$finished" "$running" "$submitted" "$resubmitted" "$unknown"
-
-if [[ "$submission_failures" -gt 0 ]]; then
-    echo "Submission failures: ${submission_failures}" >&2
-    exit 1
-fi

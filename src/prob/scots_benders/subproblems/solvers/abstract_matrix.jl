@@ -39,71 +39,6 @@ function get_vad_pf(solver::AbstractMatrixSolver, branch::Dict; nw::Int64=nw_id_
     return (vad, get_pf(solver, branch, vad))
 end
 
-"aligns free component angles with off-branch bounds without changing physical flows"
-function align_component_angles!(solver::AbstractMatrixSolver, master_var_vals, outage_branches)
-    PARAMS[:BIG_M_MULT][:SET_MAX_ANGLE_CLOSE] || return true
-    components = zeros(Int64, size(solver.A, 1))
-    references = pf_component_references(solver.A; components=components)
-    bounds = Tuple{Int, Int, Float64}[]
-    for (branch_id, branch) in solver.branch_data
-        branch_id in outage_branches && continue
-        is_off = is_branch_switchable(branch) && master_var_vals[:z_branch][branch_id] < 0.5
-        is_off || continue
-        f_col, t_col = solver.bus_to_col[branch[:f_bus]], solver.bus_to_col[branch[:t_bus]]
-        # Busbar elimination did not preserve these angles. Let the full model
-        # decide feasibility instead of silently ignoring the missing bounds.
-        (f_col <= 0 || t_col <= 0) && return false
-        f_comp, t_comp = components[f_col], components[t_col]
-        f_comp == t_comp && continue  # an invariant difference, checked below
-        vad = solver.vas[f_col] - solver.vas[t_col]
-        # lower <= vad + offset[f] - offset[t] <= upper
-        push!(bounds, (t_comp, f_comp, branch[:angmax_close] - vad + 0.5 * SOLVER_PRECISION))
-        push!(bounds, (f_comp, t_comp, vad - branch[:angmin_close] + 0.5 * SOLVER_PRECISION))
-    end
-    isempty(bounds) && return true
-    offsets = feasible_component_offsets(length(references), bounds)
-    isnothing(offsets) && return false  # coupled infeasibility needs an LP ray
-    all(isfinite, offsets) || return false
-    # Matrix components normally coincide with physical components. Opposite
-    # susceptances can cancel an edge in A; shifting those angles changes flows
-    # and possibly recourse cost, so that case still needs the LP.
-    for (branch_id, branch) in solver.branch_data
-        is_branch_electrical(branch) || continue
-        branch_id in outage_branches && continue
-        is_branch_switchable(branch) && master_var_vals[:z_branch][branch_id] < 0.5 && continue
-        f_col, t_col = solver.bus_to_col[branch[:f_bus]], solver.bus_to_col[branch[:t_bus]]
-        (f_col <= 0 || t_col <= 0) && continue
-        flow_change = branch[:b] * (offsets[components[f_col]] - offsets[components[t_col]])
-        abs(flow_change) <= SOLVER_PRECISION || return false
-    end
-    # Fix one global offset; only relative offsets matter.
-    offsets .-= offsets[1]
-    solver.vas .+= offsets[components]
-    return valid_pf_linear_solution(solver.A, solver.vas, solver.power_surplus)
-end
-
-"validates a feasibility ray against the physical, ungrounded equations and its bound sign"
-function check_feasibility_ray(solver::AbstractMatrixSolver, master_var_vals, outage_branches, betas)
-    n = size(solver.A, 1)
-    length(betas) == 1 && length(solver.duals) == n + 1 || return false
-    all(isfinite, solver.duals) || return false
-    branch_id, vad = first(betas)
-    branch_id in outage_branches && return false
-    branch = solver.branch_data[branch_id]
-    f_col, t_col = solver.bus_to_col[branch[:f_bus]], solver.bus_to_col[branch[:t_bus]]
-    (f_col <= 0 || t_col <= 0) && return false
-    bound = get_feas_diag(master_var_vals, outage_branches, branch_id, branch, vad)
-    is_lower = vad < bound - SOLVER_PRECISION
-    chi = solver.duals[end]
-    (is_lower ? chi > 0 : chi < 0) || return false
-    rhs = zeros(n)
-    rhs[f_col] -= chi
-    rhs[t_col] += chi
-    delta = view(solver.duals, 1:n)
-    valid_pf_linear_solution(solver.A, delta, rhs) || return false
-    return dot(solver.power_surplus, delta) + bound * chi > SOLVER_PRECISION
-end
-
 "applies the current master solution to solver"
 function apply_master!(solver::AbstractMatrixSolver, pm::AbstractPowerModel, master_var_vals::Dict{Symbol, AbstractVector}; nw::Int64=nw_id_default)
     add_master_trafo_vals!(solver, master_var_vals)
@@ -121,8 +56,6 @@ function apply_contingency!(solver::AbstractMatrixSolver, pm::AbstractPowerModel
     @assert(int_sol, "Only integer solutions are supported for the matrix solver")
     for branch_id in branches
         remove_branch!(solver.A, pm, branch_id, solver.bus_to_col, nw=nw)
-        branch = ref(pm, nw, :branch, branch_id)
-        reset_trafo_val!(solver.power_surplus, branch, solver.bus_to_col, get_transformer_shift(solver, branch))
     end
     
     # update fallback solver as well and returns its info
@@ -133,8 +66,6 @@ end
 function reset_contingency!(solver::AbstractMatrixSolver, pm::AbstractPowerModel, branches::Vector{Int64}, old_rhss::Dict{Int64, Dict{Symbol, Float64}}; nw::Int64=nw_id_default)
     for branch_id in branches
         add_branch!(solver.A, pm, branch_id, solver.bus_to_col, nw=nw)
-        branch = ref(pm, nw, :branch, branch_id)
-        apply_trafo_val!(solver.power_surplus, branch, solver.bus_to_col, get_transformer_shift(solver, branch))
     end
 
     # update fallback solver as well
@@ -285,10 +216,6 @@ function update_dualss_opt!(dualss::Dict{Symbol, Dict{Int, Float64}}, pm_sub::Ab
                     dualss[:rating_from_slack_on_off_ub][branch_id] = dual_val
                 end
             end
-        elseif branch_id ∉ outage_branches && branch[:status] == 1
-            # Fixed active lines still have Ohm constraints. Their RHS can
-            # contribute to the cut when a transformer has a phase shift.
-            dualss[dual_val >= 0.0 ? :ohm_fr_lb : :ohm_fr_ub][branch_id] = dual_val
         end
 
         # lb if the value is positive, ub else
@@ -355,10 +282,6 @@ function update_dualss_feas!(dualss::Dict{Symbol, Dict{Int, Float64}}, pm_sub::A
                     dualss[:rating_from_slack_on_off_ub][branch_id] = dual_val
                 end
             end
-        elseif branch_id ∉ outage_branches && branch[:status] == 1
-            # Fixed active lines still have Ohm constraints. Their RHS can
-            # contribute to the cut when a transformer has a phase shift.
-            dualss[dual_val >= 0.0 ? :ohm_fr_lb : :ohm_fr_ub][branch_id] = dual_val
         end
     end
 
@@ -376,7 +299,7 @@ function update_dualss_feas!(dualss::Dict{Symbol, Dict{Int, Float64}}, pm_sub::A
     for (branch_id, vad) in betas
         branch = solver.branch_data[branch_id]
         if is_branch_switchable(branch)
-            if branch_id ∉ outage_branches
+            if branch_id ∉ outage_branches 
                 if master_var_vals_branch[branch_id]::Float64 > 0.5
                     if vad < branch[:angmin] - SOLVER_PRECISION
                         dualss[:vad_on_off_lb][branch_id] = solver.duals[end]
@@ -385,18 +308,13 @@ function update_dualss_feas!(dualss::Dict{Symbol, Dict{Int, Float64}}, pm_sub::A
                     end
                 else
                     if vad < branch[:angmin_close] - SOLVER_PRECISION
-                        dualss[:vad_on_off_lb][branch_id] = solver.duals[end]
+                        dualss[:vad_on_off_lb][branch_id] = -solver.duals[end]
                     else
-                        dualss[:vad_on_off_ub][branch_id] = solver.duals[end]
+                        dualss[:vad_on_off_ub][branch_id] = -solver.duals[end]
                     end
                 end
 
             end
-        elseif branch_id ∉ outage_branches && branch[:status] == 1
-            # Connectedness preprocessing can fix this line on. Omitting its
-            # angle-bound multiplier would turn the Farkas ray into an invalid cut.
-            key = vad < branch[:angmin] - SOLVER_PRECISION ? :vad_lb : :vad_ub
-            dualss[key][branch_id] = solver.duals[end]
         end
     end
 end

@@ -23,7 +23,7 @@ end
 function test_dc_scots_slack_benders(path_prefix)
     @testset verbose = true "LEQ (RF) Subproblem, TAL = 2" begin
         additional_params = Dict{Symbol, Any}(:BENDERS => Dict{Symbol, Any}(:SUBPROBLEM_SOLVER_TYPE => TopologyOptimizer.LinEqSysRfSolver,
-                                                                            :PARTIAL_DECOMP => Dict{Symbol, Any}(:ENABLED => true, :INCLUDE_BASE_PF => true, :N_MAX_CONTINGENCIES => 0, :N_MAX_CONTINGENCIES_PCT => 0.0)),
+                                                                            :BASE_PF_IN_MASTER => true),
                                               :LIMITS  => Dict{Symbol, Any}(:BRANCH => Dict{Symbol, Any}(:TAL_TIMESTEP => 2)))
 
         run_multi_test(CONSTS[:TEST_SETS][:PIPELINE_TESTSET][5:5], path_prefix = path_prefix, application = "DC_SCOTS_TIME_SLACK_BENDERS", additional_params = additional_params, test_default=false, test_gen_sw=false, test_busbars = false, test_reconf = true, test_name = "DC_SCOTS_BENDERS_LEQ_RF_TAL2", validate = false)

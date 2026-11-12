@@ -96,8 +96,6 @@ function apply_contingency!(solver::LinEqSysBBRfSolver, pm::AbstractPowerModel, 
         if solver.is_factorized
             remove_branch!(solver.L, solver.U, pm, branch_id, solver.bus_to_col, solver.p, solver.q, solver.Rs, nw=nw)
         end
-        solver.A, solver.power_surplus, changed = update_outage_line!(solver.A, pm, solver.power_surplus, branch_id, solver.bus_to_col, solver.components, solver.detached_components, solver.branch_to_comp, false, nw=nw)
-        changed && (solver.is_factorized = false; solver.linsolve = LinearSolve.init(LinearSolve.LinearProblem(solver.A, solver.power_surplus)))
     end
 
     # update fallback solver as well and returns its info
@@ -108,8 +106,6 @@ end
 function reset_contingency!(solver::LinEqSysBBRfSolver, pm::AbstractPowerModel, branches::Vector{Int64}, old_rhss::Dict{Int64, Dict{Symbol, Float64}}; nw::Int64=nw_id_default)
     for branch_id in branches
         branch = ref(pm, nw, :branch, branch_id)
-        solver.A, solver.power_surplus, changed = update_outage_line!(solver.A, pm, solver.power_surplus, branch_id, solver.bus_to_col, solver.components, solver.detached_components, solver.branch_to_comp, true, nw=nw)
-        changed && (solver.is_factorized = false; solver.linsolve = LinearSolve.init(LinearSolve.LinearProblem(solver.A, solver.power_surplus)))
 
         if solver.bus_to_col[branch["f_bus"]] ≤ 0 || solver.bus_to_col[branch["t_bus"]] ≤ 0
             continue
@@ -192,8 +188,6 @@ function update_dualss_opt!(dualss::Dict{Symbol, Dict{Int, Float64}}, pm_sub::Ab
             end
         end
     end
-
-    _update_detached_bus_duals!(solver, dualss, master_var_vals, outage_branches)
 
     # compute & set μ (ohm_fr_on_off_lb/ub), π (rating_from_slack_on_off_lb/ub), β (rating_from_slack_lb/ub)
     for (branch_id, branch) ∈ solver.branch_data
@@ -281,8 +275,6 @@ function update_dualss_feas!(dualss::Dict{Symbol, Dict{Int, Float64}}, pm_sub::A
         end
     end
 
-    _update_detached_bus_duals!(solver, dualss, master_var_vals, outage_branches)
-
     # compute & set μ (ohm_fr_on_off_lb/ub), π (rating_from_slack_on_off_lb/ub), β (rating_from_slack_lb/ub)
     for (branch_id, branch::Dict{String, Any}) ∈ ref(pm_sub, nw, :branch)::Dict{Int64, Any}
 
@@ -349,7 +341,7 @@ function update_dualss_feas!(dualss::Dict{Symbol, Dict{Int, Float64}}, pm_sub::A
     # set χ
     for (branch_id, vad) in betas
         branch = solver.branch_data[branch_id]
-        if branch_id ∉ outage_branches
+        if branch_id ∉ outage_branches 
             if is_branch_switchable(branch)
                 if master_var_vals_branch[branch_id]::Float64 > 0.5
                     if vad < branch[:angmin] - SOLVER_PRECISION
@@ -359,9 +351,9 @@ function update_dualss_feas!(dualss::Dict{Symbol, Dict{Int, Float64}}, pm_sub::A
                     end
                 else
                     if vad < branch[:angmin_close] - SOLVER_PRECISION
-                        dualss[:vad_on_off_lb][branch_id] = solver.duals[end]
+                        dualss[:vad_on_off_lb][branch_id] = -solver.duals[end]
                     else
-                        dualss[:vad_on_off_ub][branch_id] = solver.duals[end]
+                        dualss[:vad_on_off_ub][branch_id] = -solver.duals[end]
                     end
                 end
             else

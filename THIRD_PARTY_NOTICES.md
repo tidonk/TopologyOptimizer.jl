@@ -24,7 +24,7 @@ including the following files:
 
 The PowerModels.jl code in these files has been modified for TopologyOptimizer.jl.
 The original copyright, conditions, and disclaimer are retained in [LICENSES/PowerModels.txt](LICENSES/PowerModels.txt).
-The pinned dependency is PowerModels.jl 0.21.6.
+The pinned dependency is PowerModels.jl 0.21.5.
 Keep these notices with source distributions and include them in the documentation
 or other materials accompanying binary distributions. The upstream names must not
 be used to imply endorsement without prior written permission.

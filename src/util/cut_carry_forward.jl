@@ -86,58 +86,43 @@ function filter_active_cuts!(data::Dict, result::Dict, activity_tol::Float64)::V
     pool = get(data, "_benders_cuts_pool", SerializedCut[])
     active_cuts = SerializedCut[]
 
-    if !isempty(pool)
-        # Extract solution values from the result
-        sol = result["solution"]["nw"]["1"]
-        sol_vals = Dict{Tuple{Symbol, Int64}, Float64}()
+    if ! isempty(pool)
+    # Extract solution values from the result
+    sol = result["solution"]["nw"]["1"]
+    sol_vals = Dict{Tuple{Symbol, Int64}, Float64}()
 
-        # Map from solution component_name to a list of (json_key, var_sym) pairs we should harvest.
-        # var_sym must agree with what `get_var_basename_idx` returns for the corresponding JuMP variable.
-        sol_field_map = Dict{String, Vector{Tuple{String, Symbol}}}(
-            "branch" => [("br_status", :z_branch), ("br_change", :z_branch_change), ("tr_shift", :tr_shift), ("tr_shift_change", :tr_shift_change)],
-            "gen"    => [("pg", :pg), ("gen_status", :z_gen)],
-            "eta"    => [("η", :η)],
-        )
-
-        for (comp_name, field_specs) in sol_field_map
-            haskey(sol, comp_name) || continue
+    # Collect values
+    for (comp_name::String, basename::String, var_sym::Symbol) in [("branch", "br_status", :z_branch), ("gen", "pg", :pg), ("gen", "gen_status", :z_gen), ("eta", "η", :η), ("branch", "tr_shift", :tr_shift)]
+        if haskey(sol, comp_name)
             for (comp_id_str, comp_sol) in sol[comp_name]
                 comp_id = parse(Int64, comp_id_str)
-                for (json_key, var_sym) in field_specs
-                    if haskey(comp_sol, json_key)
-                        sol_vals[(var_sym, comp_id)] = comp_sol[json_key]
-                    end
+                if haskey(comp_sol, basename)
+                    sol_vals[(var_sym, comp_id)] = comp_sol[basename]
                 end
             end
         end
+    end
 
-        n_missing = 0
-        for cut in pool
-            # Evaluate cut_expr at solution: constant + Σ coeff * val. Skip cuts that
-            # reference master variables not present in the solution dict (conservative).
-            lhs_val = cut.constant
-            cut_ok = true
-            for ((basename, idx), coeff) in cut.coefficients
-                val = get(sol_vals, (basename, idx), nothing)
-                if val === nothing
-                    cut_ok = false
-                    n_missing += 1
-                    break
-                end
-                lhs_val += coeff * val
-            end
-            cut_ok || continue
-
-            # RHS: η[c] for optimality, 0 for feasibility
-            rhs_val = cut.type == :optimality ? get(sol_vals, (:η, cut.contingency_id), 0.0) : 0.0
-
-            # Cut is: lhs ≤ rhs, so slack = rhs - lhs
-            if rhs_val - lhs_val <= activity_tol
-                push!(active_cuts, cut)
-            end
+    for cut in pool
+        # Evaluate cut_expr at solution: constant + Σ coeff * val
+        lhs_val = cut.constant
+        for ((basename, idx), coeff) in cut.coefficients
+            val = get(sol_vals, (basename, idx), 0.0)
+            lhs_val += coeff * val
         end
-        if n_missing > 0
-            @warn("filter_active_cuts!: $(n_missing) cut(s) referenced master variables not present in the solution dict and were skipped.")
+
+        # RHS: η[c] for optimality, 0 for feasibility
+        if cut.type == :optimality
+            rhs_val = get(sol_vals, (:η, cut.contingency_id), 0.0)
+        else
+            rhs_val = 0.0
+        end
+
+        # Cut is: lhs ≤ rhs, so slack = rhs - lhs
+        slack = rhs_val - lhs_val
+        if slack <= activity_tol
+            push!(active_cuts, cut)
+            end
         end
     end
 

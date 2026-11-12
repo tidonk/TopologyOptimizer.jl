@@ -69,29 +69,6 @@ function collect_branch_data(pm_sub::AbstractPowerModel; nw::Int64=nw_id_default
     return branch_data
 end
 
-"extends power-balance duals to detached breaker buses on active electrical lines"
-function _update_detached_bus_duals!(solver::AbstractMatrixSolver, dualss, master_var_vals, outage_branches)
-    for (branch_id, branch) in solver.branch_data
-        is_branch_electrical(branch) || continue
-        branch_id in outage_branches && continue
-        (is_branch_switchable(branch) ? master_var_vals[:z_branch][branch_id] > 0.5 : branch[:status] == 1) || continue
-
-        f_bus, t_bus = branch[:f_bus], branch[:t_bus]
-        f_col, t_col = solver.bus_to_col[f_bus], solver.bus_to_col[t_bus]
-        if f_col <= 0 < t_col
-            bus_id, value = f_bus, solver.duals[t_col]
-        elseif t_col <= 0 < f_col
-            bus_id, value = t_bus, solver.duals[f_col]
-        else
-            continue
-        end
-
-        # This zero-injection bus was eliminated from A. Matching its neighbour's
-        # dual keeps the dangling line's flow stationarity equation satisfied.
-        dualss[value >= 0 ? :power_balance_ub : :power_balance_lb][bus_id] = value
-    end
-end
-
 function _update_bb_component_duals!(solver::AbstractMatrixSolver, dualss::Dict{Symbol, Dict{Int, Float64}})
     "sets dualss `value` for the branch, and then applies the `value` to the other buses' busbar_sum"
     function _update_vad_single!(bus_id, branch_id, value, busbar_sums)
@@ -146,10 +123,8 @@ function _update_bb_component_duals!(solver::AbstractMatrixSolver, dualss::Dict{
 
             if is_branch_switchable(branch)
                 dual_value = b * (dualss_ohm_fr_on_off_lb[branch_id] + dualss_ohm_fr_on_off_ub[branch_id])
-                dual_value += dualss[:vad_on_off_lb][branch_id] + dualss[:vad_on_off_ub][branch_id]
             else
                 dual_value = b * (dualss_ohm_fr_lb[branch_id] + dualss_ohm_fr_ub[branch_id])
-                dual_value += dualss[:vad_lb][branch_id] + dualss[:vad_ub][branch_id]
             end
 
             push!(bus_to_connected_branches[f_bus_id], (branch_id,  dual_value))

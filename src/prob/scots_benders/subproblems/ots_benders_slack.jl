@@ -33,7 +33,7 @@ function build_ots_slack_benders(pm::AbstractPowerModel; n=nw_id_default)
     # impose limits for all parameters that were previously made unbounded
     variable_component_slack(pm, slack_types, nw=n)
     for slack_type in slack_types
-        if slack_type ∉ [:ratea, :vad, :pd]
+        if slack_type ∉ [:ratea, :vad, :pg_delta_percentage, :pd]
             for i in ids(pm, n, CONSTS[:INTERNAL_MAPPINGS][:SLACK_VARIABLES][:SLACK_COMPONENT_TYPE][slack_type])
                 constraint_component_slack(pm, i, slack_type, nw=n)
             end

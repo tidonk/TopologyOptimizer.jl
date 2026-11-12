@@ -189,28 +189,26 @@ function build_secure_ots(pm::AbstractPowerModel; n=nw_id_default)
 end
 
 "Security-Constrained OTS with slack variables for a subset of {gen, branch, dcline, vad}"
-function build_secure_ots_slack(pm::AbstractPowerModel; n=nw_id_default, with_base_pf::Bool=true)
+function build_secure_ots_slack(pm::AbstractPowerModel; n=nw_id_default)
     contingencies::Vector{Contingency} = ref(pm, n, :contingencies)
     slack_types = ref(pm, n, :slack_types)
 
     PARAMS[:LIMITS][:BRANCH][:BRANCH_SWITCHING] && variable_branch_indicator(pm, nw=n)
     PARAMS[:LIMITS][:GENERATOR][:GEN_SWITCHING] && variable_gen_indicator(pm, nw=n)
     # only the vm can be (un)bounded here, not the va
-    with_base_pf && variable_bus_voltage_on_off(pm, bounded=:vm       ∉ slack_types, nw=n)
+    variable_bus_voltage_on_off(pm, bounded=:vm       ∉ slack_types, nw=n)
     PARAMS[:LIMITS][:TRANSFORMER][:TRANSFORMER_SHIFTING] && variable_transformer_shift(  pm, nw=n)
 
     variable_gen_power(         pm,                                  nw=n) # bounded handeled separately for pg and qg
-    if with_base_pf
-        variable_branch_power(      pm, bounded=:ratea    ∉ slack_types, nw=n)
-        variable_dcline_power(      pm, bounded=:dclinepf ∉ slack_types, nw=n)
+    variable_branch_power(      pm, bounded=:ratea    ∉ slack_types, nw=n)
+    variable_dcline_power(      pm, bounded=:dclinepf ∉ slack_types, nw=n)
 
-        # impose limits for all parameters that were previously made unbounded
-        variable_component_slack(pm, slack_types, nw=n)
-        for slack_type in slack_types
-            if slack_type ∉ [:ratea, :vad, :pd]
-                for i in ids(pm, n, CONSTS[:INTERNAL_MAPPINGS][:SLACK_VARIABLES][:SLACK_COMPONENT_TYPE][slack_type])
-                    constraint_component_slack(pm, i, slack_type, nw=n)
-                end
+    # impose limits for all parameters that were previously made unbounded
+    variable_component_slack(pm, slack_types, nw=n)
+    for slack_type in slack_types
+        if slack_type ∉ [:ratea, :vad, :pg_delta_percentage, :pd]
+            for i in ids(pm, n, CONSTS[:INTERNAL_MAPPINGS][:SLACK_VARIABLES][:SLACK_COMPONENT_TYPE][slack_type])
+                constraint_component_slack(pm, i, slack_type, nw=n)
             end
         end
     end
@@ -224,49 +222,44 @@ function build_secure_ots_slack(pm::AbstractPowerModel; n=nw_id_default, with_ba
         end
     end
 
-    if with_base_pf
-        constraint_model_voltage_on_off(pm, n)
+    constraint_model_voltage_on_off(pm, n)
 
-        for i in ids(pm, n, :ref_buses)
-            constraint_theta_ref(pm, i, nw=n)
+    for i in ids(pm, n, :ref_buses)
+        constraint_theta_ref(pm, i, nw=n)
+    end
+
+    for i in ids(pm, n, :bus)
+        constraint_power_balance(pm, i, nw=n)
+    end
+
+    for i in ids(pm, n, :branch)
+        if pm.data["BUSBARS"] && ! is_branch_electrical(pm, n, i)
+                # for coupler or breaker, there is no thermal limit
+        elseif is_branch_switchable(pm, n, i)
+            constraint_ohms_yt_from_on_off(pm, i, nw=n)
+            constraint_ohms_yt_to_on_off(pm, i, nw=n)
+        else
+            constraint_ohms_yt_from(pm, i, nw=n)
+            constraint_ohms_yt_to(pm, i, nw=n)
         end
 
-        for i in ids(pm, n, :bus)
-            constraint_power_balance(pm, i, nw=n)
-        end
+        if is_branch_switchable(pm, n, i)
+            constraint_voltage_angle_difference_slack_on_off(pm, i, nw=n)
 
-        for i in ids(pm, n, :branch)
-            if pm.data["BUSBARS"] && ! is_branch_electrical(pm, n, i)
-                    # for coupler or breaker, there is no thermal limit
-            elseif is_branch_switchable(pm, n, i)
-                constraint_ohms_yt_from_on_off(pm, i, nw=n)
-                constraint_ohms_yt_to_on_off(pm, i, nw=n)
-            else
-                constraint_ohms_yt_from(pm, i, nw=n)
-                constraint_ohms_yt_to(pm, i, nw=n)
-            end
+            constraint_thermal_limit_from_slack_on_off(pm, i, nw=n)
+            constraint_thermal_limit_to_slack_on_off(pm, i, nw=n)
+        else
+            constraint_voltage_angle_difference_slack(pm, i, nw=n)
 
-            if is_branch_switchable(pm, n, i)
-                constraint_voltage_angle_difference_slack_on_off(pm, i, nw=n)
-
-                constraint_thermal_limit_from_slack_on_off(pm, i, nw=n)
-                constraint_thermal_limit_to_slack_on_off(pm, i, nw=n)
-            else
-                constraint_voltage_angle_difference_slack(pm, i, nw=n)
-
-                if is_branch_monitored(pm, n, i)
-                    constraint_thermal_limit_from_slack(pm, i, nw=n)
-                    constraint_thermal_limit_to_slack(pm, i, nw=n)
-                end
+            if is_branch_monitored(pm, n, i)
+                constraint_thermal_limit_from_slack(pm, i, nw=n)
+                constraint_thermal_limit_to_slack(pm, i, nw=n)
             end
         end
+    end
 
-        for i in ids(pm, n, :dcline)
-            constraint_dcline_power_losses(pm, i, nw=n)
-        end
-    else
-        # no base PF: aggregate power-balance over all components (replaces per-bus constraint_power_balance)
-        constraint_power_balance_all(pm, nw=n)
+    for i in ids(pm, n, :dcline)
+        constraint_dcline_power_losses(pm, i, nw=n)
     end
     
     if PARAMS[:LIMITS][:GENERATOR][:GEN_SWITCHING] 
@@ -291,9 +284,9 @@ function build_secure_ots_slack(pm::AbstractPowerModel; n=nw_id_default, with_ba
     variable_dcline_power_sec(pm, contingencies, bounded=:dclinepf ∉ slack_types, nw=n)
 
     if :ratea ∈ slack_types
-        variable_rate_a_slack_sec(pm, contingencies, nw=n)
+        variable_rate_a_slack_sec(pm, contingencies, nw=n)   
     end
-
+    
     # set subproblem flag in order to consider N-1 rating for branches. If SUBPROBLEM was true already, then there should be no additional contingencies
     subproblem_tmp = get(pm.data, "SUBPROBLEM", false)
     pm.data["SUBPROBLEM"] = true
@@ -305,7 +298,7 @@ function build_secure_ots_slack(pm::AbstractPowerModel; n=nw_id_default, with_ba
         end
 
         for slack_type in slack_types
-            if slack_type ∉ [:ratea, :vad, :pd]
+            if slack_type ∉ [:ratea, :vad, :pg_delta_percentage, :pd]
                 slack_component_type = CONSTS[:INTERNAL_MAPPINGS][:SLACK_VARIABLES][:SLACK_COMPONENT_TYPE][slack_type]
                 for i in ids(pm, n, slack_component_type)
                     if i ∉ get(contingency, slack_component_type, [])
@@ -332,7 +325,7 @@ function build_secure_ots_slack(pm::AbstractPowerModel; n=nw_id_default, with_ba
                     constraint_ohms_yt_from_sec(pm, i, c, contingency, nw=n)
                     constraint_ohms_yt_to_sec(pm, i, c, contingency, nw=n)
                 end
-
+        
                 if is_branch_switchable(pm, n, i)
                     constraint_voltage_angle_difference_slack_sec_on_off(pm, i, c, contingency, nw=n)
 
@@ -360,12 +353,16 @@ function build_secure_ots_slack(pm::AbstractPowerModel; n=nw_id_default, with_ba
     return pm
 end
 
-"Security-Constrained OTS with time expansion to account for multiple time steps in the optimization. `with_base_pf = false` omits the base-case powerflow variables (pf & va) and their constraints. Per-contingency PFs are added for whatever is currently in `ref(pm, t, :contingencies)` (empty → no contingency PFs)."
-function build_secure_ots_time(pm::AbstractPowerModel; with_base_pf::Bool=true)
+"Security-Constrained OTS with time expansion to account for multiple time steps in the optimization. `with_pf = false` omits all powerflow variables (pf & va) and corresponding constraints"
+function build_secure_ots_time(pm::AbstractPowerModel; with_pf::Bool=true)
     n_timesteps = length(nws(pm))
     # for each timestep, extend the secure OTS 
     for timestep in 1:n_timesteps
-        pm = build_secure_ots_slack(pm::AbstractPowerModel; n=timestep, with_base_pf=with_base_pf)
+        if with_pf
+            pm = build_secure_ots_slack(pm::AbstractPowerModel; n=timestep)
+        else
+            pm = build_ots_no_pf(pm::AbstractPowerModel; n=timestep)
+        end
 
         # binary decision variable whether a gen is active in a timestep or not. incurs shutdown/startup costs.
         #variable_gen_indicator(pm, nw=timestep)

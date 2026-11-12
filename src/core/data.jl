@@ -116,6 +116,7 @@ function remove_inactive_components!(data::Dict{String,<:Any}, inactive_componen
     remove_inactive_components!(data, Dict(inactive_component_type => [inactive_component_id]))
 end
 
+# Modified from PowerModels.jl (https://github.com/lanl-ansi/PowerModels.jl), see LICENSE
 "Transforms network data into per-unit"
 function make_per_unit!(data::Dict{String,<:Any})
     pm_data = get_pm_data(data)

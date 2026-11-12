@@ -1,0 +1,6 @@
+matplotlib==3.10.8
+numpy==2.4.4
+pandas==3.0.2
+tabulate==0.10.0
+tikzplotlib==0.10.1
+webcolors==1.13

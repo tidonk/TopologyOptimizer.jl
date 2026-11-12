@@ -27,7 +27,8 @@ settings = joinpath(@__DIR__, "settings", "default.toml")
 
 # solve the test case
 result = cd(@__DIR__) do
-    TopologyOptimizer.main(case; params_file = settings, plot = false)
+    TopologyOptimizer.main(case; application = "DC_SCOTS_TIME_SLACK_BENDERS",
+                           params_file = settings, plot = false)
 end
 
 # display results

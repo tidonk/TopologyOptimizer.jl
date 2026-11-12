@@ -85,11 +85,6 @@ function apply_contingency!(solver::LinEqSysRfSolver, pm::AbstractPowerModel, br
         end
     end
     
-    for branch_id in branches
-        branch = ref(pm, nw, :branch, branch_id)
-        reset_trafo_val!(solver.power_surplus, branch, solver.bus_to_col, get_transformer_shift(solver, branch))
-    end
-
     # update fallback solver as well and returns its info
     return apply_contingency!(solver.fallback_solver, pm, branches, master_var_vals, int_sol, nw=nw)
 end
@@ -105,11 +100,6 @@ function reset_contingency!(solver::LinEqSysRfSolver, pm::AbstractPowerModel, br
         for branch_id in branches
             add_branch!(solver.A, pm, branch_id, solver.bus_to_col, nw=nw)
         end
-    end
-
-    for branch_id in branches
-        branch = ref(pm, nw, :branch, branch_id)
-        apply_trafo_val!(solver.power_surplus, branch, solver.bus_to_col, get_transformer_shift(solver, branch))
     end
 
     # update fallback solver as well

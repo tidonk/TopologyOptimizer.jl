@@ -72,7 +72,6 @@ end
     q              ::Vector{Int64}                               = Vector(undef, n_buses)
     Rs             ::Vector{Float64}                             = Vector(undef, n_buses)
     is_factorized  ::Bool                                        = false
-    grounding_refs ::Vector{Int64}                               = Int64[]
     power_surplus  ::Vector{Float64}
     linsolve       ::LinearSolve.LinearCache
     vas            ::Vector{Float64}                             = Vector(undef, n_buses)
@@ -112,7 +111,6 @@ end
     q              ::Vector{Int64}                               = Vector(undef, n_buses)
     Rs             ::Vector{Float64}                             = Vector(undef, n_buses)
     is_factorized  ::Bool                                        = false
-    grounding_refs ::Vector{Int64}                               = Int64[]
     power_surplus  ::Vector{Float64}
     linsolve       ::LinearSolve.LinearCache
     components     ::Vector{BBComponent}
